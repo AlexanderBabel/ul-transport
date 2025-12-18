@@ -1,0 +1,60 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Konfigurera UL Transport",
+        "description": "Sök efter din buss-/spårvagnshållplats",
+        "data": {
+          "stop_query": "Hållplatsnamn (t.ex. 'Centralstationen')"
+        }
+      },
+      "select_stop": {
+        "title": "Välj hållplats",
+        "description": "Välj din hållplats från sökresultaten",
+        "data": {
+          "stop_id": "Hållplats"
+        }
+      },
+      "select_lines": {
+        "title": "Välj linjer",
+        "description": "Välj vilka linjer som ska övervakas",
+        "data": {
+          "selected_lines": "Linjer",
+          "scan_interval": "Uppdateringsintervall (sekunder)"
+        },
+        "data_description": {
+          "scan_interval": "Hur ofta ny avgångsdata ska hämtas (30-600 sekunder)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kunde inte ansluta till UL API. Kontrollera din internetanslutning och försök igen.",
+      "no_stops_found": "Inga hållplatser hittades för din sökning. Försök med ett annat sökord eller kontrollera stavningen.",
+      "no_departures_found": "Inga avgångar hittades för denna hållplats. Hållplatsen kanske inte är i trafik eller så finns det inga planerade avgångar just nu.",
+      "unknown": "Ett oväntat fel inträffade. Försök igen senare."
+    },
+    "abort": {
+      "already_configured": "Denna hållplats är redan konfigurerad"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Konfigurera linjer",
+        "description": "Välj vilka linjer som ska övervakas",
+        "data": {
+          "selected_lines": "Linjer",
+          "scan_interval": "Uppdateringsintervall (sekunder)"
+        },
+        "data_description": {
+          "scan_interval": "Hur ofta ny avgångsdata ska hämtas (30-600 sekunder)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kunde inte ansluta till UL API. Kontrollera din internetanslutning och försök igen.",
+      "no_departures_found": "Inga avgångar hittades för denna hållplats. Hållplatsen kanske inte är i trafik eller så finns det inga planerade avgångar just nu.",
+      "unknown": "Ett oväntat fel inträffade. Försök igen senare."
+    }
+  }
+}

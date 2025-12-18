@@ -1,0 +1,60 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure UL Transport",
+        "description": "Search for your bus/tram stop",
+        "data": {
+          "stop_query": "Stop name (e.g., 'Centralstationen')"
+        }
+      },
+      "select_stop": {
+        "title": "Select Stop",
+        "description": "Choose your stop from the search results",
+        "data": {
+          "stop_id": "Stop"
+        }
+      },
+      "select_lines": {
+        "title": "Select Lines",
+        "description": "Choose which lines to monitor",
+        "data": {
+          "selected_lines": "Lines",
+          "scan_interval": "Update interval (seconds)"
+        },
+        "data_description": {
+          "scan_interval": "How often to fetch new departure data (30-600 seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to UL API. Please check your internet connection and try again.",
+      "no_stops_found": "No stops found matching your search. Try a different search term or check your spelling.",
+      "no_departures_found": "No departures found for this stop. The stop may not be in service or there are no scheduled departures at this time.",
+      "unknown": "An unexpected error occurred. Please try again later."
+    },
+    "abort": {
+      "already_configured": "This stop is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure Lines",
+        "description": "Select which lines to monitor",
+        "data": {
+          "selected_lines": "Lines",
+          "scan_interval": "Update interval (seconds)"
+        },
+        "data_description": {
+          "scan_interval": "How often to fetch new departure data (30-600 seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to UL API. Please check your internet connection and try again.",
+      "no_departures_found": "No departures found for this stop. The stop may not be in service or there are no scheduled departures at this time.",
+      "unknown": "An unexpected error occurred. Please try again later."
+    }
+  }
+}
