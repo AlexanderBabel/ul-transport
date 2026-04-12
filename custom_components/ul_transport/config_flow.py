@@ -42,8 +42,7 @@ async def validate_stop(hass: HomeAssistant, stop_id: int) -> dict[str, Any]:
                 async with session.get(url) as response:
                     if response.status != 200:
                         raise CannotConnect
-                    # UL API returns text/html content-type but it's actually JSON
-                    data = await response.json(content_type=None)
+                    data = await response.json()
                     return {"stop_name": data.get("name", "Unknown Stop")}
     except Exception as err:
         _LOGGER.error(f"Error validating stop {stop_id}: {err}")
@@ -60,7 +59,7 @@ async def search_stops(hass: HomeAssistant, query: str) -> list[dict[str, Any]]:
                 async with session.get(url) as response:
                     if response.status != 200:
                         raise CannotConnect
-                    # UL API returns text/html content-type but it's actually JSON
+                    # Stop search API returns text/html but is actually JSON
                     data = await response.json(content_type=None)
                     
                     # Extract stops from response
@@ -164,8 +163,7 @@ class ULTransportConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         async with session.get(url) as response:
                             if response.status != 200:
                                 raise CannotConnect
-                            # UL API returns text/html content-type but it's actually JSON
-                            data = await response.json(content_type=None)
+                            data = await response.json()
                             self._stop_name = data.get("name", self._stop_name)
                             
                             # Extract unique line + direction combinations
@@ -301,7 +299,7 @@ class ULTransportOptionsFlowHandler(config_entries.OptionsFlow):
                     async with session.get(url) as response:
                         if response.status != 200:
                             raise CannotConnect
-                        data = await response.json(content_type=None)
+                        data = await response.json()
                         
                         lines_set = set()
                         for dep in data.get("departures", []):

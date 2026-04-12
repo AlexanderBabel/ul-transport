@@ -56,5 +56,12 @@
       "no_departures_found": "Inga avgångar hittades för denna hållplats. Hållplatsen kanske inte är i trafik eller så finns det inga planerade avgångar just nu.",
       "unknown": "Ett oväntat fel inträffade. Försök igen senare."
     }
+  },
+  "entity": {
+    "button": {
+      "refresh": {
+        "name": "Uppdatera"
+      }
+    }
   }
 }

@@ -56,5 +56,12 @@
       "no_departures_found": "No departures found for this stop. The stop may not be in service or there are no scheduled departures at this time.",
       "unknown": "An unexpected error occurred. Please try again later."
     }
+  },
+  "entity": {
+    "button": {
+      "refresh": {
+        "name": "Refresh"
+      }
+    }
   }
 }
