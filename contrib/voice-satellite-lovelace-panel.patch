@@ -1,0 +1,242 @@
+diff --git a/src/card/index.js b/src/card/index.js
+index 0c45d04..7c38b72 100644
+--- a/src/card/index.js
++++ b/src/card/index.js
+@@ -185,6 +185,7 @@ export class VoiceSatelliteCard extends HTMLElement {
+ 
+   set hass(hass) {
+     this._hass = hass;
++    this._ui.setLovelaceHass(hass);
+ 
+     if (!this._engineOwned) return;
+     if (isEditorPreview(this)) return;
+diff --git a/src/card/ui.js b/src/card/ui.js
+index f06cce3..9c0a41c 100644
+--- a/src/card/ui.js
++++ b/src/card/ui.js
+@@ -42,6 +42,22 @@ const TIMER_SPLIT_PILL_CSS = `
+   text-overflow: ellipsis;
+ }`;
+ 
++// A Lovelace card is drawn at dashboard sizes, for a screen at arm's length,
++// while the satellite is read from across the room. The featured width that
++// suits a single image is too narrow for a card's rows, so widen it; a result
++// can ask for a scale on top of that. Placed before the portrait rules so
++// those still win in portrait, where the panel is nearly full width already.
++const LOVELACE_PANEL_CSS = `
++#voice-satellite-ui .vs-image-panel.lovelace {
++  width: 34%;
++}
++/* Every skin stops the chat at 32.5% + 40px: the 25% featured panel plus the
++   7.5% it is inset by. A wider panel needs the text to stop sooner, or the
++   last words of every line end up behind the card. */
++#voice-satellite-ui.has-lovelace .vs-chat-container {
++  right: calc(41.5% + 40px);
++}`;
++
+ // Portrait layout for the media panel. Every skin positions the panel the
+ // same way in landscape (fixed to the right of the chat bubbles), so a
+ // single shared override appended after each skin's stylesheet moves the
+@@ -82,6 +98,9 @@ const PORTRAIT_MEDIA_CSS = `
+   }
+ }`;
+ 
++// How long to wait for a custom card's JS before drawing it anyway.
++const CUSTOM_CARD_TIMEOUT_MS = 5000;
++
+ const CONDITION_LABEL_KEYS = {
+   'sunny': 'full.ui.weather.conditions.sunny',
+   'cloudy': 'full.ui.weather.conditions.cloudy',
+@@ -882,6 +901,93 @@ export class UIManager {
+     this._globalUI.classList.add('has-featured');
+   }
+ 
++  /**
++   * Show a Lovelace card in the media panel (featured mode).
++   *
++   * The card is built by HA's own helpers, so any card the dashboard can show -
++   * built-in or custom - works here without this file knowing about it.
++   * @param {object} config - Lovelace card config, e.g. {type: 'custom:my-card'}
++   */
++  async showLovelacePanel(config) {
++    if (!this._globalUI) return;
++    const panel = this._globalUI.querySelector('.vs-image-panel');
++    const scroll = panel.querySelector('.vs-panel-scroll');
++
++    const custom = typeof config.type === 'string' && config.type.startsWith('custom:')
++      ? config.type.slice(7)
++      : null;
++    // The satellite runs on pages that are not dashboards - its own panel, for
++    // one - and those load neither Lovelace's card helpers nor the dashboard
++    // resources that define custom cards. A result may name the module its
++    // card lives in so it can be brought in regardless.
++    if (custom && !customElements.get(custom) && config.card_module) {
++      try {
++        await import(/* webpackIgnore: true */ config.card_module);
++      } catch (e) {
++        console.warn('[voice-satellite] card module failed to load', e);
++      }
++    }
++
++    // Still not defined: a dashboard would rebuild on ll-rebuild, but there is
++    // none here, so give a resource that is still loading a moment to arrive.
++    if (custom && !customElements.get(custom)) {
++      await Promise.race([
++        customElements.whenDefined(custom),
++        new Promise((r) => setTimeout(r, CUSTOM_CARD_TIMEOUT_MS)),
++      ]);
++    }
++
++    let el;
++    try {
++      if (custom && customElements.get(custom)) {
++        // Built directly: this is all createCardElement does for a custom card,
++        // and it works with no Lovelace on the page.
++        el = document.createElement(custom);
++        el.setConfig(config);
++      } else if (window.loadCardHelpers) {
++        el = (await window.loadCardHelpers()).createCardElement(config);
++      } else {
++        console.warn('[voice-satellite] no card helpers here and', config.type, 'is not defined');
++        return;
++      }
++    } catch (e) {
++      // A card type that isn't installed, or a config it rejects. The spoken
++      // answer still stands; only the picture is missing.
++      console.warn('[voice-satellite] Lovelace card failed to build', e);
++      return;
++    }
++    // Awaiting the helpers gives the turn time to end - don't mount into a
++    // panel that has since been cleared.
++    if (!this._globalUI?.contains(panel)) return;
++
++    el.className = 'vs-lovelace-card';
++    // Cards that size themselves to their content need nothing here; ones that
++    // fill their container (maps, cameras) collapse to nothing without a
++    // height, so a config may name one.
++    el.style.display = 'block';
++    el.style.width = '100%';
++    // zoom rather than transform: it reflows, so the card lays itself out at
++    // the larger size instead of being stretched, and percentages resolve in
++    // the zoomed space - so the width above still means the whole panel.
++    if (config.card_scale) el.style.zoom = String(config.card_scale);
++    if (config.card_height) el.style.height = config.card_height;
++    el.hass = this._card?.hass;
++    this._lovelaceEl = el;
++
++    scroll.appendChild(el);
++    panel.classList.add('lovelace', 'featured', 'visible');
++    this._globalUI.classList.add('has-featured', 'has-lovelace');
++  }
++
++  /**
++   * Keep a mounted Lovelace card's hass current - it has no dashboard to
++   * feed it, so a live card would freeze on the object it was built with.
++   * @param {object} hass
++   */
++  setLovelaceHass(hass) {
++    if (this._lovelaceEl) this._lovelaceEl.hass = hass;
++  }
++
+   /**
+    * Show financial data (stock/crypto/currency) in the media panel (featured mode).
+    * @param {object} data - Financial tool result
+@@ -1087,9 +1193,10 @@ export class UIManager {
+         }
+         while (scroll.firstChild) scroll.removeChild(scroll.firstChild);
+       }
+-      panel.classList.remove('visible', 'featured', 'weather', 'financial');
++      panel.classList.remove('visible', 'featured', 'weather', 'financial', 'lovelace');
+     }
+-    this._globalUI.classList.remove('has-images', 'has-featured');
++    this._lovelaceEl = null;
++    this._globalUI.classList.remove('has-images', 'has-featured', 'has-lovelace');
+     this.hideLightbox();
+   }
+ 
+@@ -1349,7 +1456,7 @@ export class UIManager {
+       el.id = 'voice-satellite-styles';
+       document.head.appendChild(el);
+     }
+-    el.textContent = skin.css + TIMER_SPLIT_PILL_CSS + PORTRAIT_MEDIA_CSS;
++    el.textContent = skin.css + TIMER_SPLIT_PILL_CSS + LOVELACE_PANEL_CSS + PORTRAIT_MEDIA_CSS;
+   }
+ 
+   _applyTextScale() {
+diff --git a/src/mini/ui.js b/src/mini/ui.js
+index d02b215..e737d50 100644
+--- a/src/mini/ui.js
++++ b/src/mini/ui.js
+@@ -637,6 +637,8 @@ export class MiniUIManager {
+   showVideoPanel() {}
+   showWeatherPanel() {}
+   showFinancialPanel() {}
++  showLovelacePanel() {}
++  setLovelaceHass() {}
+   hasVisibleImages() { return false; }
+   showLightbox() {}
+   showVideoLightbox() {}
+diff --git a/src/pipeline/events.js b/src/pipeline/events.js
+index daadc17..9691876 100644
+--- a/src/pipeline/events.js
++++ b/src/pipeline/events.js
+@@ -237,6 +237,14 @@ export function handleIntentProgress(mgr, eventData) {
+       return;
+     }
+ 
++    // Any tool can hand the satellite a Lovelace card to draw, by putting a
++    // card config in its result. Checked before the shapes above so a tool that
++    // sends both gets the card it asked for rather than a guess at its payload.
++    if (toolResult?.card && typeof toolResult.card === 'object') {
++      mgr.card.chat.addLovelace(toolResult.card);
++      return;
++    }
++
+     const results = toolResult?.results;
+     if (Array.isArray(results)) {
+       const videos = results.filter(r => r.video_id);
+diff --git a/src/session/chat-proxy.js b/src/session/chat-proxy.js
+index 1926df6..d858bf0 100644
+--- a/src/session/chat-proxy.js
++++ b/src/session/chat-proxy.js
+@@ -92,6 +92,10 @@ export class ChatBroadcastProxy {
+     for (const c of this._cards) c.chat.addFinancial(data);
+   }
+ 
++  addLovelace(config) {
++    for (const c of this._cards) c.chat.addLovelace(config);
++  }
++
+   clear() {
+     this._streamedResponse = '';
+     for (const c of this._cards) c.chat.clear();
+diff --git a/src/session/ui-proxy.js b/src/session/ui-proxy.js
+index 36d7e2a..f3bd410 100644
+--- a/src/session/ui-proxy.js
++++ b/src/session/ui-proxy.js
+@@ -160,6 +160,10 @@ export class UIBroadcastProxy {
+     for (const c of this._cards) c.ui.showFinancialPanel(data);
+   }
+ 
++  showLovelacePanel(config) {
++    for (const c of this._cards) c.ui.showLovelacePanel(config);
++  }
++
+   showLightbox(src) {
+     for (const c of this._cards) c.ui.showLightbox(src);
+   }
+diff --git a/src/shared/chat.js b/src/shared/chat.js
+index 9238eba..a9a6313 100644
+--- a/src/shared/chat.js
++++ b/src/shared/chat.js
+@@ -91,6 +91,10 @@ export class ChatManager {
+     this._card.ui.showFinancialPanel(data);
+   }
+ 
++  addLovelace(config) {
++    this._card.ui.showLovelacePanel(config);
++  }
++
+   addAssistant(text) {
+     // With the response hidden there is no bubble to take the dots'
+     // place, so removing them reflows the chat and makes the earlier

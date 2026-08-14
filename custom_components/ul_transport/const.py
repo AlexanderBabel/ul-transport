@@ -16,6 +16,50 @@ API_TIMEOUT = 10
 API_STOPS_SEARCH = "https://www.ul.se/api/journey/stops"
 API_STOP_DEPARTURES = "https://api.ul.se/api/v3/stop"
 
+# --- Live map (Trafiklab / Samtrafiken GTFS) ---
+CONF_GTFS_STATIC_KEY = "gtfs_static_key"
+CONF_GTFS_REALTIME_KEY = "gtfs_realtime_key"
+
+GTFS_STATIC_URL = "https://opendata.samtrafiken.se/gtfs/ul/ul.zip"
+GTFS_RT_URL = "https://opendata.samtrafiken.se/gtfs-rt/ul/{feed}.pb"
+
+# The static feed is ~26 MB and changes daily; the index is cached on disk.
+GTFS_STATIC_TIMEOUT = 180
+GTFS_STATIC_MAX_AGE = 24 * 3600
+GTFS_CACHE_FILE = "ul_transport_gtfs.pickle"
+
+# Realtime feeds refresh every ~3 s upstream. This TTL is what protects the
+# Trafiklab quota: every viewer of the map shares one upstream fetch.
+GTFS_RT_TTL = 5
+GTFS_RT_TIMEOUT = 20
+
+# route_desc values hidden unless `kinds` asks for them. 119 of 240 routes are
+# school buses, which would otherwise dominate the map. Everything else is
+# shown, including the trains ("Mälartåg", "SL pendeltåg") - a stop that has
+# them offers them in the line picker, so filtering them out by default made
+# picking one show nothing at all.
+HIDDEN_ROUTE_KINDS = ["Skolbuss"]
+
+# Regional trips calling at a hub can be 45+ stops away; beyond this they only
+# stretch the map bounds.
+DEFAULT_HORIZON_MINUTES = 30
+
+# The list below the map can reach further than the map itself: a bus 50
+# minutes out is worth reading, but not worth stretching the viewport for.
+DEFAULT_LIST_MINUTES = 90
+
+# A bus vanishing the second it is due looks like it never came. Keeping it a
+# little longer shows it actually pull out of the stop.
+DEPARTED_LINGER_SECONDS = 45
+
+# How much of the route ahead of each bus is sent so the card can animate along
+# the road instead of straight through the buildings on the corner.
+PATH_AHEAD_METRES = 600
+
+WS_OVERVIEW = f"{DOMAIN}/map/overview"
+WS_LINE = f"{DOMAIN}/map/line"
+WS_STOPS = f"{DOMAIN}/map/stops"
+
 # Traffic type mapping
 TRAFFIC_TYPE_MAPPING = {
     1: "BUS",

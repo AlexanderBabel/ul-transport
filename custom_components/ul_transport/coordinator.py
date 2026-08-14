@@ -1,7 +1,7 @@
 """Data update coordinator for UL Transport."""
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any
 
@@ -31,6 +31,11 @@ class ULTransportDataUpdateCoordinator(DataUpdateCoordinator):
         self.stop_id = stop_id
         self.stop_name = stop_name
         self.selected_lines = selected_lines
+        self.last_successful_update: datetime | None = None
+        # Every "line_towards" UL advertises here, before the selection filter:
+        # the map names its directions from these and shows lines the sensors
+        # were never asked about.
+        self.board_keys: list[str] = []
 
         super().__init__(
             hass,
@@ -76,6 +81,8 @@ class ULTransportDataUpdateCoordinator(DataUpdateCoordinator):
 
                 grouped[key].append(dep)
 
+            self.board_keys = sorted(set(all_keys))
+
             if self.selected_lines:
                 _LOGGER.debug(
                     f"Stop {self.stop_name}: Found {len(set(all_keys))} unique lines from API, "
@@ -93,6 +100,7 @@ class ULTransportDataUpdateCoordinator(DataUpdateCoordinator):
                     key=lambda x: x.get("realTimeDepartureDateTime") or x["departureDateTime"],
                 )[:5]
 
+            self.last_successful_update = datetime.now(timezone.utc)
             return grouped
 
         except aiohttp.ClientError as err:

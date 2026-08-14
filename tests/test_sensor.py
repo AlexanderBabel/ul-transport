@@ -1,115 +1,151 @@
-"""Tests for UL Transport sensor entity."""
-from unittest.mock import AsyncMock, MagicMock, patch
+"""Tests for the UL Transport sensors.
+
+The states are minutes until the next bus, so the fixtures are built relative
+to now rather than pinned to a date - a departure board fixed in 2026 tests
+nothing about a countdown.
+"""
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from custom_components.ul_transport.coordinator import ULTransportDataUpdateCoordinator
-from custom_components.ul_transport.sensor import ULTransportSensor
+from custom_components.ul_transport.sensor import (
+    ULLineDepartureSensor,
+    ULNextDepartureSensor,
+    ULTransportLastUpdateSensor,
+)
 
-from .conftest import MOCK_DEPARTURES_RESPONSE, MOCK_STOP_ID, MOCK_STOP_NAME
+from .conftest import MOCK_STOP_ID, MOCK_STOP_NAME
+
+LINE_2 = "2_Uppsala Central"
+LINE_8 = "8_Gottsunda"
 
 
-def _build_session_mock(status, json_data):
-    response = AsyncMock()
-    response.status = status
-    response.json = AsyncMock(return_value=json_data)
-    cm = AsyncMock()
-    cm.__aenter__ = AsyncMock(return_value=response)
-    cm.__aexit__ = AsyncMock(return_value=False)
-    session = MagicMock()
-    session.get = MagicMock(return_value=cm)
-    return session
+def _stamp(minutes: float) -> str:
+    """UL's own format: ISO in UTC with a trailing Z."""
+    when = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+    return when.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _departure(planned: float, estimated: float | None = None, line="2",
+               towards="Uppsala Central") -> dict:
+    return {
+        "line": {"name": line, "towards": towards, "lineNo": int(line), "trafficType": 1},
+        "departureDateTime": _stamp(planned),
+        "realTimeDepartureDateTime": None if estimated is None else _stamp(estimated),
+        "coordinate": {"latitude": 59.858, "longitude": 17.645},
+        "area": "Uppsala",
+    }
 
 
 @pytest.fixture
-async def coordinator(hass):
-    coord = ULTransportDataUpdateCoordinator(
-        hass, MOCK_STOP_ID, MOCK_STOP_NAME, [], 60
-    )
-    with patch(
-        "custom_components.ul_transport.coordinator.aiohttp.ClientSession"
-    ) as mock_session_cls:
-        mock_session_cls.return_value.__aenter__ = AsyncMock(
-            return_value=_build_session_mock(200, MOCK_DEPARTURES_RESPONSE)
-        )
-        mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-        await coord.async_refresh()
+def coordinator(hass):
+    coord = ULTransportDataUpdateCoordinator(hass, MOCK_STOP_ID, MOCK_STOP_NAME, [], 60)
+    coord.data = {
+        # Six minutes out and running two minutes late.
+        LINE_2: [_departure(4.05, 6.05), _departure(20.05)],
+        LINE_8: [_departure(2.05, 2.05, line="8", towards="Gottsunda")],
+    }
+    coord.last_update_success = True
+    coord.last_successful_update = datetime.now(timezone.utc)
     return coord
 
 
-class TestSensorInit:
+class TestLineSensor:
     def test_name_and_unique_id(self, coordinator):
-        sensor = ULTransportSensor(coordinator, "2_Uppsala Central", MOCK_STOP_NAME)
+        sensor = ULLineDepartureSensor(coordinator, LINE_2, MOCK_STOP_NAME)
         assert sensor.name == f"{MOCK_STOP_NAME} Line 2 to Uppsala Central"
-        assert sensor.unique_id == f"{MOCK_STOP_ID}_2_Uppsala Central"
+        assert sensor.unique_id == f"{MOCK_STOP_ID}_{LINE_2}_in"
 
+    def test_state_is_minutes_until_the_next_bus(self, coordinator):
+        sensor = ULLineDepartureSensor(coordinator, LINE_2, MOCK_STOP_NAME)
+        assert sensor.native_value == 6
 
-class TestSensorState:
-    def test_returns_realtime_when_available(self, coordinator):
-        sensor = ULTransportSensor(coordinator, "2_Uppsala Central", MOCK_STOP_NAME)
-        assert sensor.state == "2026-04-12T12:02:00"
+    def test_minutes_are_floored_not_rounded(self, coordinator):
+        """"In 2 minutes" has to stop being true before the bus goes."""
+        coordinator.data[LINE_2] = [_departure(2.9, 2.9)]
+        assert ULLineDepartureSensor(coordinator, LINE_2, MOCK_STOP_NAME).native_value == 2
 
-    def test_returns_planned_when_no_realtime(self, coordinator):
-        # Patch coordinator data with no realtime
-        coordinator.data["2_Uppsala Central"][0]["realTimeDepartureDateTime"] = None
-        sensor = ULTransportSensor(coordinator, "2_Uppsala Central", MOCK_STOP_NAME)
-        assert sensor.state == "2026-04-12T12:00:00"
+    def test_a_bus_at_the_kerb_reads_zero_not_negative(self, coordinator):
+        coordinator.data[LINE_2] = [_departure(-3, -3)]
+        assert ULLineDepartureSensor(coordinator, LINE_2, MOCK_STOP_NAME).native_value == 0
 
-    def test_returns_none_when_no_departures(self, coordinator):
-        coordinator.data["2_Uppsala Central"] = []
-        sensor = ULTransportSensor(coordinator, "2_Uppsala Central", MOCK_STOP_NAME)
-        assert sensor.state is None
+    def test_falls_back_to_the_timetable_without_realtime(self, coordinator):
+        coordinator.data[LINE_2] = [_departure(9.05)]
+        sensor = ULLineDepartureSensor(coordinator, LINE_2, MOCK_STOP_NAME)
+        assert sensor.native_value == 9
+        assert sensor.extra_state_attributes["is_realtime"] is False
+        assert sensor.extra_state_attributes["delay_minutes"] is None
 
-
-class TestSensorAttributes:
-    def test_core_attributes_present(self, coordinator):
-        sensor = ULTransportSensor(coordinator, "2_Uppsala Central", MOCK_STOP_NAME)
-        attrs = sensor.extra_state_attributes
-
-        assert attrs["line_name"] == "2"
-        assert attrs["transport"] == "BUS"
-        assert attrs["direction"] == "Uppsala Central"
-        assert attrs["stop_name"] == MOCK_STOP_NAME
-        assert attrs["line_color"] == "#af1e14"  # Line 2 = red
-        assert attrs["text_color"] == "#ffffff"
-
-    def test_departure_slots_filled(self, coordinator):
-        sensor = ULTransportSensor(coordinator, "2_Uppsala Central", MOCK_STOP_NAME)
-        attrs = sensor.extra_state_attributes
-
-        assert "planned_departure_time" in attrs
-        assert "planned_departure_time_1" in attrs
-        # Slots beyond available departures filled with None
-        assert attrs["planned_departure_time_2"] is None
-
-    def test_empty_when_no_departures(self, coordinator):
-        coordinator.data["2_Uppsala Central"] = []
-        sensor = ULTransportSensor(coordinator, "2_Uppsala Central", MOCK_STOP_NAME)
+    def test_none_when_nothing_is_running(self, coordinator):
+        coordinator.data[LINE_2] = []
+        sensor = ULLineDepartureSensor(coordinator, LINE_2, MOCK_STOP_NAME)
+        assert sensor.native_value is None
         assert sensor.extra_state_attributes == {}
+        assert sensor.available is False
 
 
-class TestSensorIcon:
-    def test_bus_icon(self, coordinator):
-        sensor = ULTransportSensor(coordinator, "2_Uppsala Central", MOCK_STOP_NAME)
-        assert sensor.icon == "mdi:bus"
+class TestAttributes:
+    def test_the_bits_an_automation_needs(self, coordinator):
+        attrs = ULLineDepartureSensor(
+            coordinator, LINE_2, MOCK_STOP_NAME
+        ).extra_state_attributes
+        assert attrs["line"] == "2"
+        assert attrs["direction"] == "Uppsala Central"
+        assert attrs["transport"] == "BUS"
+        assert attrs["stop_name"] == MOCK_STOP_NAME
+        assert attrs["is_realtime"] is True
+        assert attrs["delay_minutes"] == 2
+        assert attrs["departure"] > attrs["scheduled_departure"]
 
-    def test_default_icon_when_no_departures(self, coordinator):
-        coordinator.data["2_Uppsala Central"] = []
-        sensor = ULTransportSensor(coordinator, "2_Uppsala Central", MOCK_STOP_NAME)
-        assert sensor.icon == "mdi:transit-connection-variant"
+    def test_the_ones_after_it(self, coordinator):
+        attrs = ULLineDepartureSensor(
+            coordinator, LINE_2, MOCK_STOP_NAME
+        ).extra_state_attributes
+        assert attrs["next_departures_in"] == [20]
+        assert len(attrs["next_departures"]) == 1
+
+    def test_icon_follows_the_traffic_type(self, coordinator):
+        assert ULLineDepartureSensor(coordinator, LINE_2, MOCK_STOP_NAME).icon == "mdi:bus"
 
 
-class TestSensorAvailability:
-    def test_available_with_data(self, coordinator):
-        sensor = ULTransportSensor(coordinator, "2_Uppsala Central", MOCK_STOP_NAME)
+class TestNextDepartureSensor:
+    """One sensor for "is anything leaving soon", whichever line it is."""
+
+    def test_picks_the_earliest_across_lines(self, coordinator):
+        sensor = ULNextDepartureSensor(coordinator, MOCK_STOP_NAME)
+        assert sensor.native_value == 2
+        assert sensor.extra_state_attributes["line"] == "8"
+
+    def test_unique_id_and_name(self, coordinator):
+        sensor = ULNextDepartureSensor(coordinator, MOCK_STOP_NAME)
+        assert sensor.unique_id == f"{MOCK_STOP_ID}_next_departure"
+        assert sensor.name == f"{MOCK_STOP_NAME} Next departure"
+
+    def test_unavailable_with_an_empty_board(self, coordinator):
+        coordinator.data = {}
+        assert ULNextDepartureSensor(coordinator, MOCK_STOP_NAME).available is False
+
+
+class TestLastUpdateSensor:
+    def test_name_and_unique_id(self, coordinator):
+        sensor = ULTransportLastUpdateSensor(coordinator, MOCK_STOP_NAME)
+        assert sensor.name == f"{MOCK_STOP_NAME} Last Update"
+        assert sensor.unique_id == f"{MOCK_STOP_ID}_last_update"
+
+    def test_icon(self, coordinator):
+        sensor = ULTransportLastUpdateSensor(coordinator, MOCK_STOP_NAME)
+        assert sensor.icon == "mdi:clock-check-outline"
+
+    def test_native_value_none_before_first_fetch(self, coordinator):
+        coordinator.last_successful_update = None
+        sensor = ULTransportLastUpdateSensor(coordinator, MOCK_STOP_NAME)
+        assert sensor.native_value is None
+        assert sensor.available is False
+
+    def test_native_value_after_successful_fetch(self, coordinator):
+        now = datetime.now(timezone.utc)
+        coordinator.last_successful_update = now
+        sensor = ULTransportLastUpdateSensor(coordinator, MOCK_STOP_NAME)
+        assert sensor.native_value == now
         assert sensor.available is True
-
-    def test_unavailable_when_coordinator_failed(self, coordinator):
-        coordinator.last_update_success = False
-        sensor = ULTransportSensor(coordinator, "2_Uppsala Central", MOCK_STOP_NAME)
-        assert sensor.available is False
-
-    def test_unavailable_when_empty_data(self, coordinator):
-        coordinator.data["2_Uppsala Central"] = []
-        sensor = ULTransportSensor(coordinator, "2_Uppsala Central", MOCK_STOP_NAME)
-        assert sensor.available is False

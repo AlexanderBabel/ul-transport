@@ -23,7 +23,8 @@
           "scan_interval": "Uppdateringsintervall (sekunder)"
         },
         "data_description": {
-          "scan_interval": "Hur ofta ny avgångsdata ska hämtas (30-600 sekunder)"
+          "scan_interval": "Hur ofta ny avgångsdata ska hämtas (30-600 sekunder)",
+          "selected_lines": "Lämna tom för att övervaka alla linjer, även de som bara går vid andra tider på dygnet."
         }
       }
     },
@@ -41,13 +42,17 @@
     "step": {
       "init": {
         "title": "Konfigurera linjer",
-        "description": "Välj vilka linjer som ska övervakas",
+        "description": "Välj vilka linjer som ska övervakas. {keys}",
         "data": {
           "selected_lines": "Linjer",
-          "scan_interval": "Uppdateringsintervall (sekunder)"
+          "scan_interval": "Uppdateringsintervall (sekunder)",
+          "gtfs_static_key": "Trafiklab GTFS Regional (statisk) API-nyckel",
+          "gtfs_realtime_key": "Trafiklab GTFS Regional Realtime API-nyckel"
         },
         "data_description": {
-          "scan_interval": "Hur ofta ny avgångsdata ska hämtas (30-600 sekunder)"
+          "scan_interval": "Hur ofta ny avgångsdata ska hämtas (30-600 sekunder)",
+          "gtfs_static_key": "Valfri. Krävs för livekartan, som använder den för linjenamn, hållplatsnamn och rutter. Lämna tom för att endast använda avgångssensorer.",
+          "gtfs_realtime_key": "Valfri. Krävs för livekartan. Båda nycklarna gäller hela kontot, så det räcker att ange dem för en hållplats."
         }
       }
     },
@@ -61,6 +66,11 @@
     "button": {
       "refresh": {
         "name": "Uppdatera"
+      }
+    },
+    "sensor": {
+      "last_update": {
+        "name": "Senaste uppdatering"
       }
     }
   }

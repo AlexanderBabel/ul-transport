@@ -24,3 +24,6 @@ config/
 
 # macOS
 .DS_Store
+
+# Claude Code
+.claude/

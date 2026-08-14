@@ -1,4 +1,5 @@
 """Tests for UL Transport coordinator."""
+from datetime import timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -56,6 +57,35 @@ class TestCoordinatorFetch:
         assert "8_Gottsunda" in data
         assert len(data["2_Uppsala Central"]) == 2
         assert len(data["8_Gottsunda"]) == 1
+
+    async def test_sets_last_successful_update_on_success(self, coordinator):
+        with patch(
+            "custom_components.ul_transport.coordinator.aiohttp.ClientSession"
+        ) as mock_session_cls:
+            mock_session_cls.return_value.__aenter__ = AsyncMock(
+                return_value=_build_session_mock(200, MOCK_DEPARTURES_RESPONSE)
+            )
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            assert coordinator.last_successful_update is None
+            await coordinator._async_update_data()
+
+        assert coordinator.last_successful_update is not None
+        assert coordinator.last_successful_update.tzinfo == timezone.utc
+
+    async def test_does_not_update_last_successful_update_on_failure(self, coordinator):
+        with patch(
+            "custom_components.ul_transport.coordinator.aiohttp.ClientSession"
+        ) as mock_session_cls:
+            mock_session_cls.return_value.__aenter__ = AsyncMock(
+                return_value=_build_session_mock(500, {})
+            )
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(UpdateFailed):
+                await coordinator._async_update_data()
+
+        assert coordinator.last_successful_update is None
 
     async def test_filters_by_selected_lines(self, hass):
         coord = _make_coordinator(hass, selected_lines=["2_Uppsala Central"])

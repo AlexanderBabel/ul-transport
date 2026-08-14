@@ -17,6 +17,8 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     DOMAIN,
+    CONF_GTFS_REALTIME_KEY,
+    CONF_GTFS_STATIC_KEY,
     CONF_STOP_ID,
     CONF_STOP_NAME,
     CONF_SELECTED_LINES,
@@ -211,11 +213,11 @@ class ULTransportConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             selected_lines = user_input.get("selected_lines", [])
             scan_interval = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-            
-            # If empty list, monitor all lines
-            if not selected_lines:
-                selected_lines = self._available_lines
-            
+
+            # Empty means every line, and stays empty: pinning it to the lines
+            # running at setup time means a stop added at midnight never gets a
+            # sensor for the line that only runs in the morning.
+
             return self.async_create_entry(
                 title=self._stop_name,
                 data={
@@ -267,6 +269,26 @@ class ULTransportConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
 
+def _map_keys_entry(hass: HomeAssistant):
+    """The one stop that holds the Trafiklab keys, if any stop does.
+
+    They unlock the same account-wide feeds whichever stop they are typed on,
+    so they are asked for once and edited where they were entered rather than
+    copied onto every stop. The first entry holding them keeps them, so two
+    stops that both have keys today do not hide the fields from each other.
+    """
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        static = entry.options.get(CONF_GTFS_STATIC_KEY) or entry.data.get(
+            CONF_GTFS_STATIC_KEY
+        )
+        realtime = entry.options.get(CONF_GTFS_REALTIME_KEY) or entry.data.get(
+            CONF_GTFS_REALTIME_KEY
+        )
+        if static and realtime:
+            return entry
+    return None
+
+
 class ULTransportOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for UL Transport."""
 
@@ -276,10 +298,15 @@ class ULTransportOptionsFlowHandler(config_entries.OptionsFlow):
         """Manage the options."""
         errors = {}
 
+        holder = _map_keys_entry(self.hass)
+        elsewhere = (
+            holder if holder and holder.entry_id != self.config_entry.entry_id else None
+        )
+
         if user_input is not None:
             selected_lines = user_input.get("selected_lines", [])
             scan_interval = user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-            
+
             # Save empty list to monitor all lines (don't fetch specific lines)
             # This allows new lines to appear automatically
             return self.async_create_entry(
@@ -287,6 +314,8 @@ class ULTransportOptionsFlowHandler(config_entries.OptionsFlow):
                 data={
                     CONF_SELECTED_LINES: selected_lines,
                     CONF_SCAN_INTERVAL: scan_interval,
+                    CONF_GTFS_STATIC_KEY: user_input.get(CONF_GTFS_STATIC_KEY, ""),
+                    CONF_GTFS_REALTIME_KEY: user_input.get(CONF_GTFS_REALTIME_KEY, ""),
                 }
             )
 
@@ -355,30 +384,56 @@ class ULTransportOptionsFlowHandler(config_entries.OptionsFlow):
             self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         )
 
+        current_static_key = self.config_entry.options.get(
+            CONF_GTFS_STATIC_KEY,
+            self.config_entry.data.get(CONF_GTFS_STATIC_KEY, "")
+        )
+        current_realtime_key = self.config_entry.options.get(
+            CONF_GTFS_REALTIME_KEY,
+            self.config_entry.data.get(CONF_GTFS_REALTIME_KEY, "")
+        )
+
+        schema = {
+            vol.Optional(
+                "selected_lines",
+                default=current_selection
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=line_options,
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
+                CONF_SCAN_INTERVAL,
+                default=current_scan_interval
+            ): vol.All(
+                vol.Coerce(int),
+                vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL)
+            ),
+        }
+        # Both keys are needed for the live map; leave blank to skip it and keep
+        # departure sensors only. They are account-wide, so they are asked for
+        # on one stop only - whichever one has them is where they are edited.
+        if elsewhere is None:
+            schema[
+                vol.Optional(CONF_GTFS_STATIC_KEY, default=current_static_key)
+            ] = str
+            schema[
+                vol.Optional(CONF_GTFS_REALTIME_KEY, default=current_realtime_key)
+            ] = str
+
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        "selected_lines", 
-                        default=current_selection
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=line_options,
-                            multiple=True,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    ),
-                    vol.Optional(
-                        CONF_SCAN_INTERVAL,
-                        default=current_scan_interval
-                    ): vol.All(
-                        vol.Coerce(int),
-                        vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL)
-                    ),
-                }
-            ),
+            data_schema=vol.Schema(schema),
             errors=errors,
+            description_placeholders={
+                "keys": (
+                    f"The live map uses the Trafiklab keys set on {elsewhere.title}."
+                    if elsewhere is not None
+                    else ""
+                )
+            },
         )
 
 

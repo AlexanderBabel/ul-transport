@@ -23,7 +23,8 @@
           "scan_interval": "Update interval (seconds)"
         },
         "data_description": {
-          "scan_interval": "How often to fetch new departure data (30-600 seconds)"
+          "scan_interval": "How often to fetch new departure data (30-600 seconds)",
+          "selected_lines": "Leave empty to monitor every line, including ones that only run at other times of day."
         }
       }
     },
@@ -41,13 +42,17 @@
     "step": {
       "init": {
         "title": "Configure Lines",
-        "description": "Select which lines to monitor",
+        "description": "Select which lines to monitor. {keys}",
         "data": {
           "selected_lines": "Lines",
-          "scan_interval": "Update interval (seconds)"
+          "scan_interval": "Update interval (seconds)",
+          "gtfs_static_key": "Trafiklab GTFS Regional (static) API key",
+          "gtfs_realtime_key": "Trafiklab GTFS Regional Realtime API key"
         },
         "data_description": {
-          "scan_interval": "How often to fetch new departure data (30-600 seconds)"
+          "scan_interval": "How often to fetch new departure data (30-600 seconds)",
+          "gtfs_static_key": "Optional. Needed for the live map, which uses it for line names, stop names and route geometry. Leave blank to use departure sensors only.",
+          "gtfs_realtime_key": "Optional. Needed for the live map. Both keys are account-wide, so setting them on one stop enables the map for all of them."
         }
       }
     },
@@ -61,6 +66,11 @@
     "button": {
       "refresh": {
         "name": "Refresh"
+      }
+    },
+    "sensor": {
+      "last_update": {
+        "name": "Last Update"
       }
     }
   }
