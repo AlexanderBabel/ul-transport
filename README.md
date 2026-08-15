@@ -403,6 +403,10 @@ pytest
 ruff check custom_components tests
 ```
 
+```bash
+ruff format custom_components tests
+```
+
 Every push runs `hassfest`, HACS validation, `ruff` and the test suite — see
 [.github/workflows/validate.yml](.github/workflows/validate.yml).
 

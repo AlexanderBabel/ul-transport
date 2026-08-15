@@ -69,9 +69,7 @@ async def test_sets_up_and_hands_the_coordinator_to_the_platforms(hass, entry):
 async def test_creates_one_device_for_the_stop(hass, entry):
     await _setup(hass, entry)
 
-    devices = dr.async_entries_for_config_entry(
-        dr.async_get(hass), entry.entry_id
-    )
+    devices = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)
     assert len(devices) == 1
     assert devices[0].name == MOCK_STOP_NAME
     assert devices[0].identifiers == {(DOMAIN, str(MOCK_STOP_ID))}
@@ -82,9 +80,9 @@ async def test_every_entity_lands_on_that_device(hass, entry):
 
     registry = er.async_get(hass)
     entities = er.async_entries_for_config_entry(registry, entry.entry_id)
-    device_id = dr.async_entries_for_config_entry(
-        dr.async_get(hass), entry.entry_id
-    )[0].id
+    device_id = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)[
+        0
+    ].id
 
     unique_ids = {e.unique_id for e in entities}
     assert f"{MOCK_STOP_ID}_refresh" in unique_ids
@@ -118,9 +116,7 @@ async def test_an_options_change_reloads_exactly_once(hass, entry):
     """Two update listeners were registered, so every save reloaded twice."""
     await _setup(hass, entry)
 
-    with patch.object(
-        hass.config_entries, "async_reload", AsyncMock()
-    ) as reload:
+    with patch.object(hass.config_entries, "async_reload", AsyncMock()) as reload:
         hass.config_entries.async_update_entry(
             entry, options={CONF_SELECTED_LINES: ["2_Uppsala Central"]}
         )

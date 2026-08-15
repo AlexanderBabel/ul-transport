@@ -191,12 +191,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ULTransportConfigEntry) 
     stop_id = entry.data[CONF_STOP_ID]
     stop_name = entry.data[CONF_STOP_NAME]
     selected_lines = entry.options.get(
-        CONF_SELECTED_LINES,
-        entry.data.get(CONF_SELECTED_LINES, [])
+        CONF_SELECTED_LINES, entry.data.get(CONF_SELECTED_LINES, [])
     )
     scan_interval = entry.options.get(
-        CONF_SCAN_INTERVAL,
-        entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     )
 
     coordinator = ULTransportDataUpdateCoordinator(

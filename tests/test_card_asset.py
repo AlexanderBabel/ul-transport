@@ -6,6 +6,7 @@ parse fails silently: the module never runs, the element is never defined, and
 the dashboard shows a bare error box - with the reason hidden if the user
 looking at it is not an administrator. Nothing else in the suite would catch it.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -6,6 +6,7 @@ everything human-readable has to come from the static feed. That feed is 143 MB
 unpacked, which is why this module builds a small index once a day and pickles
 it, rather than parsing on demand.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -189,9 +190,12 @@ class GTFSIndex:
         travelled = 0.0
         previous = (lat, lon)
         for point in points[start + 1 :]:
-            travelled += math.dist(
-                (previous[0], previous[1] * scale), (point[0], point[1] * scale)
-            ) * METRES_PER_DEGREE
+            travelled += (
+                math.dist(
+                    (previous[0], previous[1] * scale), (point[0], point[1] * scale)
+                )
+                * METRES_PER_DEGREE
+            )
             out.append(point)
             previous = point
             if travelled >= metres:
@@ -287,12 +291,18 @@ def _seconds(clock: str) -> int | None:
     return hours * 3600 + minutes * 60 + secs
 
 
-_WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+_WEEKDAYS = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
 
 
-def _service_dates(
-    zf: zipfile.ZipFile, wanted: set[str]
-) -> dict[str, set[str]]:
+def _service_dates(zf: zipfile.ZipFile, wanted: set[str]) -> dict[str, set[str]]:
     """Which dates each service runs on, expanded from calendar + exceptions.
 
     Expanded once at build time so answering "is this trip running today" at
@@ -333,9 +343,7 @@ def build_index(raw: bytes, ul_stop_ids: list[int | str]) -> GTFSIndex:
     """
     started = time.monotonic()
     zf = zipfile.ZipFile(io.BytesIO(raw))
-    index = GTFSIndex(
-        built=time.time(), stop_ids=sorted(str(s) for s in ul_stop_ids)
-    )
+    index = GTFSIndex(built=time.time(), stop_ids=sorted(str(s) for s in ul_stop_ids))
 
     for row in _rows(zf, "agency.txt"):
         if row.get("agency_timezone"):
@@ -533,7 +541,12 @@ async def async_load_index(
     path = _cache_path(hass)
     index = await hass.async_add_executor_job(_load_cache, path)
 
-    if index is not None and not index.stale and index.covers(ul_stop_ids) and not force:
+    if (
+        index is not None
+        and not index.stale
+        and index.covers(ul_stop_ids)
+        and not force
+    ):
         return index
 
     session = async_get_clientsession(hass)
