@@ -6,3 +6,6 @@ pytest-homeassistant-custom-component>=0.13.250
 home-assistant-frontend
 gtfs-realtime-bindings>=1.0.0
 pytest-cov>=5.0.0
+# Exact, and read by the Ruff CI job via version-file, so a lint run here and
+# a lint run in CI are the same lint run. Dependabot moves it.
+ruff==0.16.3

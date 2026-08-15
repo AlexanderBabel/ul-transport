@@ -1,0 +1,32 @@
+version: 2
+
+updates:
+  # SHA-pinned actions cannot be updated by hand without re-resolving every
+  # digest, which is exactly the chore that gets skipped. Dependabot reads the
+  # version comment beside each pin and rewrites both together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+    open-pull-requests-limit: 5
+    groups:
+      # One PR a week rather than one per action.
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+    open-pull-requests-limit: 5
+    groups:
+      test-requirements:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
