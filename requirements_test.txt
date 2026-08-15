@@ -1,5 +1,8 @@
 # Pinned loosely: pytest-homeassistant-custom-component pulls the matching
 # Home Assistant release, so bumping it is how this tracks core.
 pytest-homeassistant-custom-component>=0.13.250
+# The manifest depends on `frontend`, which Home Assistant cannot set up
+# without this wheel - and phacc deliberately leaves it out.
+home-assistant-frontend
 gtfs-realtime-bindings>=1.0.0
 pytest-cov>=5.0.0

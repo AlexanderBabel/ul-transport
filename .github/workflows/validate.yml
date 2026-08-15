@@ -26,9 +26,6 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-        env:
-          # Not listed in home-assistant/brands, which is core-only.
-          INPUT_IGNORE: brands
 
   lint:
     name: Ruff
