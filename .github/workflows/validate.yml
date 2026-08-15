@@ -52,6 +52,14 @@ jobs:
             custom_components
             tests
           args: check --output-format=github
+      - name: Ruff format
+        uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
+        with:
+          version-file: requirements_test.txt
+          src: >-
+            custom_components
+            tests
+          args: format --check --diff
 
   test:
     name: Tests

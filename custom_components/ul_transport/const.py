@@ -89,15 +89,15 @@ DEFAULT_ICON = "mdi:transit-connection-variant"
 
 # UL line color mapping based on official website
 LINE_COLORS = {
-    "1": "#ffffff",   # White (with black text)
-    "2": "#af1e14",   # Red
-    "3": "#008031",   # Green
-    "4": "#df1995",   # Pink
-    "5": "#78be20",   # Lime green
-    "6": "#8b5b29",   # Brown
-    "7": "#00a3e0",   # Light blue
-    "8": "#fc4c02",   # Orange
-    "9": "#0077c8",   # Blue
+    "1": "#ffffff",  # White (with black text)
+    "2": "#af1e14",  # Red
+    "3": "#008031",  # Green
+    "4": "#df1995",  # Pink
+    "5": "#78be20",  # Lime green
+    "6": "#8b5b29",  # Brown
+    "7": "#00a3e0",  # Light blue
+    "8": "#fc4c02",  # Orange
+    "9": "#0077c8",  # Blue
     "10": "#960a8c",  # Purple
     "11": "#97999b",  # Gray
     "12": "#f2a900",  # Yellow/gold (with black text)

@@ -1,4 +1,5 @@
 """Tests for the live map: GTFS indexing and the two map views."""
+
 from __future__ import annotations
 
 from datetime import datetime, time as dtime, timedelta
@@ -132,6 +133,7 @@ def _clock(now: float, offset_minutes: float) -> str:
 
 def _timetable_zip(now: float, service_dates: str | None = None) -> bytes:
     """The same stops, with three line-2 trips timed against ``now``."""
+
     def at(offset: float) -> str:
         return _clock(now, offset)
 
@@ -376,13 +378,20 @@ class TestOverview:
         assert result["vehicles"][0]["age"] is None
 
     def test_excludes_vehicle_that_already_passed(self, index):
-        assert all(v["trip_id"] != "T_PASSED" for v in self._run(index, time.time())["vehicles"])
+        assert all(
+            v["trip_id"] != "T_PASSED"
+            for v in self._run(index, time.time())["vehicles"]
+        )
 
     def test_excludes_trips_that_never_call_at_my_stop(self, index):
-        assert all(v["trip_id"] != "T_OTHER" for v in self._run(index, time.time())["vehicles"])
+        assert all(
+            v["trip_id"] != "T_OTHER" for v in self._run(index, time.time())["vehicles"]
+        )
 
     def test_school_buses_filtered_by_default(self, index):
-        assert all(v["kind"] != "Skolbuss" for v in self._run(index, time.time())["vehicles"])
+        assert all(
+            v["kind"] != "Skolbuss" for v in self._run(index, time.time())["vehicles"]
+        )
 
     def test_school_buses_included_when_requested(self, index):
         result = self._run(index, time.time(), kinds=["Stadsbuss", "Skolbuss"])
@@ -443,17 +452,13 @@ class TestOverview:
             index, positions, updates, MY_UL_ID, kinds=both, lines=["9"], now=now
         )
         assert {v["line"] for v in filtered["vehicles"]} == {"9"}
-        unfiltered = overview(
-            index, positions, updates, MY_UL_ID, kinds=both, now=now
-        )
+        unfiltered = overview(index, positions, updates, MY_UL_ID, kinds=both, now=now)
         assert len(unfiltered["vehicles"]) == 2
 
     def test_destination_filter(self, index):
         """Where it goes, not which number it wears - see wanted_destinations."""
         now = time.time()
-        positions = _positions(
-            ("T_INBOUND", 59.87, 17.67), ("T_REVERSE", 59.86, 17.65)
-        )
+        positions = _positions(("T_INBOUND", 59.87, 17.67), ("T_REVERSE", 59.86, 17.65))
         updates = _updates(
             {"T_INBOUND": [(3, now + 300, 0)], "T_REVERSE": [(1, now + 600, 0)]}
         )
@@ -523,9 +528,12 @@ class TestOverview:
         now = time.time()
         positions = _positions(("T_INBOUND", 59.87, 17.67))
         updates = _updates({"T_INBOUND": [(3, now + 3600, 0)]})
-        assert overview(
-            index, positions, updates, MY_UL_ID, list_minutes=20, now=now
-        )["vehicles"] == []
+        assert (
+            overview(index, positions, updates, MY_UL_ID, list_minutes=20, now=now)[
+                "vehicles"
+            ]
+            == []
+        )
 
     def test_stops_cover_approach_path_only(self, index):
         # The bus is one stop out, so the map should show that stop and mine -
@@ -536,7 +544,7 @@ class TestOverview:
         result = overview(index, positions, updates, MY_UL_ID, now=now)
         assert {s["id"] for s in result["stops"]} == {
             "9022003700999001",  # the call still ahead of the bus
-            MY_AREA,             # my stop, as the parent station
+            MY_AREA,  # my stop, as the parent station
         }
 
     def test_my_stop_is_one_marker_not_one_per_platform(self, index):
@@ -574,9 +582,10 @@ class TestOverview:
     def test_vehicle_without_prediction_is_skipped(self, index):
         now = time.time()
         positions = _positions(("T_INBOUND", 59.87, 17.67))
-        assert overview(
-            index, positions, _updates({}), MY_UL_ID, now=now
-        )["vehicles"] == []
+        assert (
+            overview(index, positions, _updates({}), MY_UL_ID, now=now)["vehicles"]
+            == []
+        )
 
     def test_sorted_by_arrival(self, index):
         now = time.time()
@@ -590,7 +599,12 @@ class TestOverview:
             }
         )
         result = overview(
-            index, positions, updates, MY_UL_ID, kinds=["Stadsbuss", "Skolbuss"], now=now
+            index,
+            positions,
+            updates,
+            MY_UL_ID,
+            kinds=["Stadsbuss", "Skolbuss"],
+            now=now,
         )
         assert [v["trip_id"] for v in result["vehicles"]] == ["T_SCHOOL", "T_INBOUND"]
 
@@ -601,18 +615,14 @@ class TestDirectionNames:
     # T_INBOUND (dir 0) ends at Uppsala Centralstation.
     # T_REVERSE (dir 1) ends at Granbystaden.
     def test_resolves_both_directions_by_place_name(self, index):
-        names = direction_names(
-            index, [("2", "Centralstation"), ("2", "Granbystaden")]
-        )
+        names = direction_names(index, [("2", "Centralstation"), ("2", "Granbystaden")])
         assert names[("2", "0")] == "Centralstation"
         assert names[("2", "1")] == "Granbystaden"
 
     def test_resolves_the_last_one_by_elimination(self, index):
         # "Gamla Uppsala" matches nothing in the feed's stop names - exactly the
         # real line 2 case - but it is the only name left once dir 1 is taken.
-        names = direction_names(
-            index, [("2", "Granbystaden"), ("2", "Gamla Uppsala")]
-        )
+        names = direction_names(index, [("2", "Granbystaden"), ("2", "Gamla Uppsala")])
         assert names[("2", "1")] == "Granbystaden"
         assert names[("2", "0")] == "Gamla Uppsala"
 
@@ -662,9 +672,7 @@ class TestDirectionNames:
         assert {v["destination"] for v in result["vehicles"]} == {"Centralstation"}
 
     def test_opposite_directions_never_share_a_name(self, index):
-        names = direction_names(
-            index, [("2", "Centralstation"), ("2", "Granbystaden")]
-        )
+        names = direction_names(index, [("2", "Centralstation"), ("2", "Granbystaden")])
         assert names[("2", "0")] != names[("2", "1")]
 
 
@@ -730,13 +738,17 @@ class TestLineView:
     def test_uses_clicked_trip_shape(self, index):
         now = time.time()
         result = line_view(
-            index, _positions(), _updates({}), "2", MY_UL_ID, trip_id="T_INBOUND", now=now
+            index,
+            _positions(),
+            _updates({}),
+            "2",
+            MY_UL_ID,
+            trip_id="T_INBOUND",
+            now=now,
         )
         assert len(result["shape"]) == 3
 
-    def test_falls_back_to_the_timetable_when_nothing_is_predicting(
-        self, timetabled
-    ):
+    def test_falls_back_to_the_timetable_when_nothing_is_predicting(self, timetabled):
         """Line 7 towards Årsta Fyrislund: three buses running, no trip updates.
 
         A dash for the departure time of a bus you can watch move across the
@@ -762,7 +774,12 @@ class TestLineView:
     def test_no_invented_time_for_a_bus_that_does_not_call_here(self, index):
         now = time.time()
         result = line_view(
-            index, _positions(("T_OTHER", 59.87, 17.67)), _updates({}), "2", MY_UL_ID, now=now
+            index,
+            _positions(("T_OTHER", 59.87, 17.67)),
+            _updates({}),
+            "2",
+            MY_UL_ID,
+            now=now,
         )
         assert all("eta" not in v for v in result["vehicles"])
 
@@ -812,9 +829,7 @@ class TestLinger:
         )
         assert kept["vehicles"][0]["departed"] is True
         # Zero: off the map the moment it is due away.
-        gone = overview(
-            index, positions, updates, MY_UL_ID, linger_seconds=0, now=now
-        )
+        gone = overview(index, positions, updates, MY_UL_ID, linger_seconds=0, now=now)
         assert gone["vehicles"] == []
 
 
@@ -868,9 +883,9 @@ class TestTimetable:
         index, now = timetabled
         positions = _positions(("T_SOON", 59.870, 17.670))
         updates = _updates({"T_SOON": [(2, now + 600, 0)]})
-        rows = overview(
-            index, positions, updates, MY_UL_ID, list_minutes=120, now=now
-        )["vehicles"]
+        rows = overview(index, positions, updates, MY_UL_ID, list_minutes=120, now=now)[
+            "vehicles"
+        ]
         assert [v["trip_id"] for v in rows] == ["T_SOON", "T_RUNNING", "T_LATER"]
         assert [v.get("scheduled", False) for v in rows] == [False, True, True]
 
@@ -883,7 +898,9 @@ class TestTimetable:
 
     def test_scheduled_rows_are_not_plotted(self, timetabled):
         index, now = timetabled
-        rows = overview(index, _positions(), _updates({}), MY_UL_ID, now=now)["vehicles"]
+        rows = overview(index, _positions(), _updates({}), MY_UL_ID, now=now)[
+            "vehicles"
+        ]
         assert all(v["on_map"] is False for v in rows)
         assert all("lat" not in v for v in rows)
 
@@ -969,9 +986,12 @@ class TestTimetable:
 
     def test_day_off_is_not_listed(self, timetabled_no_service):
         index, now = timetabled_no_service
-        assert overview(
-            index, _positions(), _updates({}), MY_UL_ID, list_minutes=180, now=now
-        )["vehicles"] == []
+        assert (
+            overview(
+                index, _positions(), _updates({}), MY_UL_ID, list_minutes=180, now=now
+            )["vehicles"]
+            == []
+        )
 
     def test_agency_timezone_is_read_from_the_feed(self, timetabled):
         index, _ = timetabled
@@ -1001,25 +1021,32 @@ class TestLiveFlag:
         now = time.time()
         positions = _positions(("T_INBOUND", 59.870, 17.670))
         updates = _updates({"T_INBOUND": [(3, now + 300, 0)]})
-        assert overview(index, positions, updates, MY_UL_ID, now=now)["vehicles"][0][
-            "live"
-        ] is True
+        assert (
+            overview(index, positions, updates, MY_UL_ID, now=now)["vehicles"][0][
+                "live"
+            ]
+            is True
+        )
 
     def test_false_when_only_a_prediction_arrives(self, index):
         now = time.time()
         positions = _positions(("T_SCHOOL", 59.874, 17.674))
         updates = _updates({"T_INBOUND": [(3, now + 300, 0)]})
-        assert overview(index, positions, updates, MY_UL_ID, now=now)["vehicles"][0][
-            "live"
-        ] is False
+        assert (
+            overview(index, positions, updates, MY_UL_ID, now=now)["vehicles"][0][
+                "live"
+            ]
+            is False
+        )
 
     def test_unknown_when_positions_were_never_fetched(self, index):
         """A list-only card skips that feed, so it cannot say either way."""
         now = time.time()
         updates = _updates({"T_INBOUND": [(3, now + 300, 0)]})
-        assert overview(index, None, updates, MY_UL_ID, now=now)["vehicles"][0][
-            "live"
-        ] is None
+        assert (
+            overview(index, None, updates, MY_UL_ID, now=now)["vehicles"][0]["live"]
+            is None
+        )
 
 
 class TestListOnly:
@@ -1038,9 +1065,9 @@ class TestListOnly:
     def test_timetabled_rows_do_not_claim_a_missing_position(self, timetabled):
         """Null, not absent: without the feed, "no live data" is our own doing."""
         index, now = timetabled
-        rows = overview(
-            index, None, _updates({}), MY_UL_ID, list_minutes=120, now=now
-        )["vehicles"]
+        rows = overview(index, None, _updates({}), MY_UL_ID, list_minutes=120, now=now)[
+            "vehicles"
+        ]
         assert rows and all(row["scheduled"] for row in rows)
         assert all(row["live"] is None for row in rows)
 
@@ -1048,7 +1075,9 @@ class TestListOnly:
         now = float(int(time.time()))
         updates = _updates({"T_INBOUND": [(3, now + 420, 0)]})
         updates.header.timestamp = int(now) - 6
-        assert 5.5 <= overview(index, None, updates, MY_UL_ID, now=now)["data_age"] <= 6.5
+        assert (
+            5.5 <= overview(index, None, updates, MY_UL_ID, now=now)["data_age"] <= 6.5
+        )
 
 
 class TestIndexCoverage:

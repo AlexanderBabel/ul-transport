@@ -4,6 +4,7 @@ The states are minutes until the next bus, so the fixtures are built relative
 to now rather than pinned to a date - a departure board fixed in 2026 tests
 nothing about a countdown.
 """
+
 from datetime import UTC, datetime, timedelta
 import json
 import pathlib
@@ -32,10 +33,16 @@ def _stamp(minutes: float) -> str:
     return when.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _departure(planned: float, estimated: float | None = None, line="2",
-               towards="Uppsala Central") -> dict:
+def _departure(
+    planned: float, estimated: float | None = None, line="2", towards="Uppsala Central"
+) -> dict:
     return {
-        "line": {"name": line, "towards": towards, "lineNo": int(line), "trafficType": 1},
+        "line": {
+            "name": line,
+            "towards": towards,
+            "lineNo": int(line),
+            "trafficType": 1,
+        },
         "departureDateTime": _stamp(planned),
         "realTimeDepartureDateTime": None if estimated is None else _stamp(estimated),
         "coordinate": {"latitude": 59.858, "longitude": 17.645},
@@ -70,7 +77,7 @@ class TestLineSensor:
         assert sensor.native_value == 6
 
     def test_minutes_are_floored_not_rounded(self, coordinator):
-        """"In 2 minutes" has to stop being true before the bus goes."""
+        """'In 2 minutes' has to stop being true before the bus goes."""
         coordinator.data[LINE_2] = [_departure(2.9, 2.9)]
         assert ULLineDepartureSensor(coordinator, LINE_2).native_value == 2
 
@@ -194,7 +201,9 @@ class TestDeviceAndTranslations:
 
     def test_translation_keys_exist_in_every_language(self, coordinator):
         """A translation_key with no string renders as a blank name in the UI."""
-        component = pathlib.Path(__file__).parent.parent / "custom_components/ul_transport"
+        component = (
+            pathlib.Path(__file__).parent.parent / "custom_components/ul_transport"
+        )
         wanted = {
             "sensor": {
                 ULNextDepartureSensor(coordinator).translation_key,
@@ -202,10 +211,15 @@ class TestDeviceAndTranslations:
             },
             "button": {ULTransportRefreshButton(coordinator).translation_key},
         }
-        files = [component / "strings.json", *(component / "translations").glob("*.json")]
+        files = [
+            component / "strings.json",
+            *(component / "translations").glob("*.json"),
+        ]
         assert len(files) >= 3
         for path in files:
             entities = json.loads(path.read_text())["entity"]
             for platform, keys in wanted.items():
                 for key in keys:
-                    assert entities[platform][key]["name"], f"{path.name}: {platform}.{key}"
+                    assert entities[platform][key]["name"], (
+                        f"{path.name}: {platform}.{key}"
+                    )

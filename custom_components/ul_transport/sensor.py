@@ -158,7 +158,9 @@ class _ULDepartureSensor(
         return {
             "line": str(line["name"]).strip(),
             "direction": line["towards"].strip(),
-            "transport": TRAFFIC_TYPE_MAPPING.get(line.get("trafficType", 0), "UNKNOWN"),
+            "transport": TRAFFIC_TYPE_MAPPING.get(
+                line.get("trafficType", 0), "UNKNOWN"
+            ),
             "stop_name": self._stop_name,
             "departure": estimated or planned,
             "scheduled_departure": planned,
@@ -194,9 +196,7 @@ class _ULDepartureSensor(
 class ULLineDepartureSensor(_ULDepartureSensor):
     """One line in one direction from one stop."""
 
-    def __init__(
-        self, coordinator: ULTransportDataUpdateCoordinator, key: str
-    ) -> None:
+    def __init__(self, coordinator: ULTransportDataUpdateCoordinator, key: str) -> None:
         """Initialize the sensor for one "line_towards" key."""
         super().__init__(coordinator)
         self._key = key

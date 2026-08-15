@@ -73,7 +73,9 @@ def build_session(status: int = 200, json_data=None, error: Exception | None = N
         return session
     response = AsyncMock()
     response.status = status
-    response.json = AsyncMock(return_value=MOCK_DEPARTURES_RESPONSE if json_data is None else json_data)
+    response.json = AsyncMock(
+        return_value=MOCK_DEPARTURES_RESPONSE if json_data is None else json_data
+    )
     context = AsyncMock()
     context.__aenter__ = AsyncMock(return_value=response)
     context.__aexit__ = AsyncMock(return_value=False)
@@ -81,7 +83,9 @@ def build_session(status: int = 200, json_data=None, error: Exception | None = N
     return session
 
 
-def add_stop(hass: HomeAssistant, coordinator, stop_id: int = MOCK_STOP_ID) -> MockConfigEntry:
+def add_stop(
+    hass: HomeAssistant, coordinator, stop_id: int = MOCK_STOP_ID
+) -> MockConfigEntry:
     """Register a stop the way async_setup_entry leaves it.
 
     The coordinator lives on the config entry's runtime_data, so anything that

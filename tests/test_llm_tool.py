@@ -4,6 +4,7 @@ The card config in the result is the contract with the voice satellite: the
 satellite draws whatever Lovelace config lands there, so a wrong stop_id shows
 the wrong stop's board on the tablet without the spoken answer being wrong.
 """
+
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -20,10 +21,16 @@ def _stamp(minutes: float) -> str:
     return when.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _departure(planned: float, estimated: float | None = None, line="2",
-               towards="Uppsala Central") -> dict:
+def _departure(
+    planned: float, estimated: float | None = None, line="2", towards="Uppsala Central"
+) -> dict:
     return {
-        "line": {"name": line, "towards": towards, "lineNo": int(line), "trafficType": 1},
+        "line": {
+            "name": line,
+            "towards": towards,
+            "lineNo": int(line),
+            "trafficType": 1,
+        },
         "departureDateTime": _stamp(planned),
         "realTimeDepartureDateTime": None if estimated is None else _stamp(estimated),
     }

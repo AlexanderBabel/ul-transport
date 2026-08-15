@@ -44,6 +44,7 @@ ignore = [
     "D213",    # incompatible with D212
     "D401",    # this codebase describes what a thing IS, not what it does
     "E501",    # line length is the formatter's job
+    "ISC001",  # conflicts with `ruff format`, which owns string concatenation
     "N818",    # CannotConnect is Home Assistant's own config-flow convention
     "PLR0911", # these are data-shaping functions; branch counts are inherent
     "PLR0912",

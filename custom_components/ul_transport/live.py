@@ -6,6 +6,7 @@ filling the recorder for data nobody looks at when the map is closed. Instead
 the cards pull from here while they are on screen, and a short TTL means N
 viewers still cost one upstream request.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -147,7 +148,9 @@ def _predictions(trip_updates: Any) -> dict[str, dict[int, tuple[int, int]]]:
     return out
 
 
-def _stops_away(calls: dict[int, tuple[int, int]], my_seq: int, now: float) -> int | None:
+def _stops_away(
+    calls: dict[int, tuple[int, int]], my_seq: int, now: float
+) -> int | None:
     """How many stops the vehicle still has to make before mine.
 
     VehiclePositions carries no ``current_stop_sequence`` for UL (0 of 319
@@ -203,7 +206,10 @@ def _departed(
 
 
 def _next_stop(
-    index: GTFSIndex, trip: dict[str, Any], calls: dict[int, tuple[int, int]], now: float
+    index: GTFSIndex,
+    trip: dict[str, Any],
+    calls: dict[int, tuple[int, int]],
+    now: float,
 ) -> tuple[str, int] | tuple[None, None]:
     """Name and predicted time of the call the vehicle is heading for."""
     upcoming = [seq for seq, (when, _) in calls.items() if when > now]
@@ -578,9 +584,7 @@ def overview(
         # every inbound vehicle runs to hundreds of markers if left unbounded.
         first_seq = my_seq - away if away is not None else my_seq
         referenced.update(
-            stop_id
-            for seq, stop_id in trip["stops"]
-            if first_seq <= seq <= my_seq
+            stop_id for seq, stop_id in trip["stops"] if first_seq <= seq <= my_seq
         )
 
     scheduled = timetable_arrivals(
@@ -914,9 +918,7 @@ async def ws_overview(
         # A card showing only the list has nothing to plot, so it does not pay
         # for the positions feed - half the upstream requests.
         positions = (
-            await feed.async_positions()
-            if msg.get("include_positions", True)
-            else None
+            await feed.async_positions() if msg.get("include_positions", True) else None
         )
         trip_updates = await feed.async_trip_updates()
         result = overview(

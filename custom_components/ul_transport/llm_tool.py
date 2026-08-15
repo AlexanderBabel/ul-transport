@@ -6,6 +6,7 @@ there, so the map card comes up on the tablet while the LLM reads the times.
 Assistants without a screen ignore it - it costs them a few tokens and nothing
 else.
 """
+
 from __future__ import annotations
 
 from typing import Any

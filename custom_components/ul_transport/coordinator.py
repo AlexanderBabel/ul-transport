@@ -25,7 +25,9 @@ type ULTransportConfigEntry = ConfigEntry[ULTransportDataUpdateCoordinator]
 MAX_DEPARTURES_PER_LINE = 5
 
 
-class ULTransportDataUpdateCoordinator(DataUpdateCoordinator[dict[str, list[dict[str, Any]]]]):
+class ULTransportDataUpdateCoordinator(
+    DataUpdateCoordinator[dict[str, list[dict[str, Any]]]]
+):
     """Class to manage fetching UL Transport data."""
 
     def __init__(
@@ -85,7 +87,9 @@ class ULTransportDataUpdateCoordinator(DataUpdateCoordinator[dict[str, list[dict
                         )
                     data = await response.json()
         except TimeoutError as err:
-            raise UpdateFailed(f"Timeout fetching departures for {self.stop_name}") from err
+            raise UpdateFailed(
+                f"Timeout fetching departures for {self.stop_name}"
+            ) from err
         except aiohttp.ClientError as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
 
@@ -119,8 +123,9 @@ class ULTransportDataUpdateCoordinator(DataUpdateCoordinator[dict[str, list[dict
             for key, departures in grouped.items():
                 grouped[key] = sorted(
                     departures,
-                    key=lambda x: x.get("realTimeDepartureDateTime")
-                    or x["departureDateTime"],
+                    key=lambda x: (
+                        x.get("realTimeDepartureDateTime") or x["departureDateTime"]
+                    ),
                 )[:MAX_DEPARTURES_PER_LINE]
         except (AttributeError, KeyError, TypeError) as err:
             raise UpdateFailed(f"Unexpected API response shape: {err}") from err
@@ -151,6 +156,5 @@ def async_coordinators(hass: HomeAssistant) -> list[ULTransportDataUpdateCoordin
     state the stops share (the map runtime, the request tally).
     """
     return [
-        entry.runtime_data
-        for entry in hass.config_entries.async_loaded_entries(DOMAIN)
+        entry.runtime_data for entry in hass.config_entries.async_loaded_entries(DOMAIN)
     ]

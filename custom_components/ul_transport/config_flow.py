@@ -127,7 +127,9 @@ class ULTransportConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
-                self._stops = await async_search_stops(self.hass, user_input["stop_query"])
+                self._stops = await async_search_stops(
+                    self.hass, user_input["stop_query"]
+                )
             except CannotConnect as err:
                 _LOGGER.debug("Stop search failed: %s", err)
                 errors["base"] = "cannot_connect"
