@@ -1,4 +1,5 @@
 """The UL Transport integration."""
+
 from __future__ import annotations
 
 import asyncio
@@ -8,28 +9,27 @@ from pathlib import Path
 
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
-    DOMAIN,
     CONF_GTFS_REALTIME_KEY,
     CONF_GTFS_STATIC_KEY,
+    CONF_SCAN_INTERVAL,
+    CONF_SELECTED_LINES,
     CONF_STOP_ID,
     CONF_STOP_NAME,
-    CONF_SELECTED_LINES,
-    CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
 )
-from .coordinator import ULTransportDataUpdateCoordinator
+from .coordinator import ULTransportConfigEntry, ULTransportDataUpdateCoordinator
 from .gtfs import async_load_index
+from .live import LiveFeed, async_register_websocket
 from .llm_tool import (
     async_register as async_register_llm_api,
     async_unregister as async_unregister_llm_api,
 )
-from .live import LiveFeed, async_register_websocket
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -97,12 +97,9 @@ async def _async_build_map(
 
     try:
         index = await async_load_index(hass, static_key, stop_ids)
-    except Exception as err:  # pylint: disable=broad-except
+    except Exception as err:  # noqa: BLE001 - the map is additive, sensors go on
         _LOGGER.error("Live map unavailable, GTFS index failed: %s", err)
         return
-
-    if runtime is not None:
-        await runtime["feed"].async_close()
 
     hass.data[DOMAIN]["map"] = {
         "index": index,
@@ -129,10 +126,54 @@ async def _async_serve_card(hass: HomeAssistant) -> None:
     # running an old copy after an update; the mtime makes each version its own
     # URL, so a restart is enough to pick up a new card.
     stamp = await hass.async_add_executor_job(lambda: int(CARD_PATH.stat().st_mtime))
-    add_extra_js_url(hass, f"/{DOMAIN}/ul-transport-map.js?v={stamp}")
+    url = f"/{DOMAIN}/ul-transport-map.js?v={stamp}"
+    if not await _async_register_resource(hass, url):
+        # Only as a fallback. The index routes fetch this file while the page is
+        # still parsing, before the frontend has finished setting itself up, and
+        # on a legacy-bundle browser the definition it performs there does not
+        # survive - the module runs to its last line and the element is still
+        # missing. Dashboard resources load after the app is up, which is when
+        # every working HACS card on that same tablet defines itself.
+        add_extra_js_url(hass, url)
+        add_extra_js_url(hass, url, es5=True)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def _async_register_resource(hass: HomeAssistant, url: str) -> bool:
+    """List the card as a dashboard resource. True if it is now listed.
+
+    The route every HACS card uses, and the one that demonstrably works on a
+    legacy-bundle browser: resources arrive over the websocket once the frontend
+    is running, rather than out of index.html while the page is still parsing.
+
+    The caller falls back to add_extra_js_url when this returns False.
+    """
+    data = hass.data.get("lovelace")
+    # YAML-mode resources are the user's file to edit; add_extra_js_url covers
+    # that case on its own.
+    if data is None or getattr(data, "resource_mode", None) != "storage":
+        return False
+    resources = data.resources
+    # "module" is the only type the frontend still offers for new resources;
+    # "js" survives for existing ones but is on its way out.
+    try:
+        await resources.async_get_info()  # loads the collection from storage
+        base = url.split("?", maxsplit=1)[0]
+        for item in resources.async_items():
+            if item.get("url", "").split("?", maxsplit=1)[0] != base:
+                continue
+            if item["url"] != url or item.get("type") != "module":
+                await resources.async_update_item(
+                    item["id"], {"url": url, "res_type": "module"}
+                )
+            return True
+        await resources.async_create_item({"res_type": "module", "url": url})
+    except Exception as err:  # noqa: BLE001 - falls back to add_extra_js_url
+        _LOGGER.warning("Could not register the card as a dashboard resource: %s", err)
+        return False
+    return True
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ULTransportConfigEntry) -> bool:
     """Set up UL Transport from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
@@ -163,7 +204,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     await coordinator.async_config_entry_first_refresh()
 
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+    entry.runtime_data = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -180,7 +221,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 runtime["index"] = await async_load_index(
                     hass, keys[0], _configured_stop_ids(hass)
                 )
-            except Exception as err:  # pylint: disable=broad-except
+            except Exception as err:  # noqa: BLE001 - keep the index we have
                 _LOGGER.warning("GTFS index refresh failed: %s", err)
 
         hass.data[DOMAIN]["index_timer"] = async_track_time_interval(
@@ -192,22 +233,49 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def _async_options_updated(
+    hass: HomeAssistant, entry: ULTransportConfigEntry
+) -> None:
     """Reload when options change so new keys or stop selections take effect."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_remove_entry(
+    hass: HomeAssistant, entry: ULTransportConfigEntry
+) -> None:
+    """Take the card back out of the dashboard resources on uninstall.
+
+    Left behind it is a resource pointing at a 404, which the frontend complains
+    about on every dashboard load.
+    """
+    if hass.config_entries.async_entries(DOMAIN):
+        return  # other stops still use it
+    data = hass.data.get("lovelace")
+    if data is None or getattr(data, "resource_mode", None) != "storage":
+        return
+    try:
+        await data.resources.async_get_info()
+        for item in list(data.resources.async_items()):
+            if item.get("url", "").startswith(f"/{DOMAIN}/"):
+                await data.resources.async_delete_item(item["id"])
+    except Exception as err:  # noqa: BLE001 - uninstall must not fail on this
+        _LOGGER.warning("Could not remove the card's dashboard resource: %s", err)
+
+
+async def async_unload_entry(
+    hass: HomeAssistant, entry: ULTransportConfigEntry
+) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        hass.data[DOMAIN].pop(entry.entry_id)
+        # Hand the request-counter sensor to whichever entry sets up next.
+        if hass.data[DOMAIN].get("counter_entry") == entry.entry_id:
+            hass.data[DOMAIN].pop("counter_entry")
 
-        # Last entry out tears down the shared map runtime.
+        # Last entry out tears down the shared map runtime. The HTTP session is
+        # Home Assistant's own and is deliberately left alone.
         if not hass.config_entries.async_loaded_entries(DOMAIN):
             async_unregister_llm_api(hass)
-            runtime = hass.data[DOMAIN].pop("map", None)
-            if runtime is not None:
-                await runtime["feed"].async_close()
+            hass.data[DOMAIN].pop("map", None)
             if timer := hass.data[DOMAIN].pop("index_timer", None):
                 timer()
 

@@ -8,41 +8,43 @@ viewers still cost one upstream request.
 """
 from __future__ import annotations
 
+import asyncio
+from dataclasses import dataclass
 import logging
 import time
-from dataclasses import dataclass, field
 from typing import Any
 
 import aiohttp
-import async_timeout
-import voluptuous as vol
 
 # At module level, not inside the fetch: protobuf pulls in a C extension on
 # first use, and importing that from the event loop is a blocking call Home
 # Assistant warns about. Integration modules are imported in an executor.
 from google.transit import gtfs_realtime_pb2
-
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+import voluptuous as vol
 
 from .const import (
     CONF_STOP_ID,
     CONF_STOP_NAME,
+    DARK_TEXT_LINES,
     DEFAULT_HORIZON_MINUTES,
     DEFAULT_LIST_MINUTES,
     DEPARTED_LINGER_SECONDS,
     DOMAIN,
-    HIDDEN_ROUTE_KINDS,
-    PATH_AHEAD_METRES,
     GTFS_RT_TIMEOUT,
     GTFS_RT_TTL,
     GTFS_RT_URL,
-    LIGHT_TEXT_LINES,
+    HIDDEN_ROUTE_KINDS,
     LINE_COLORS,
+    PATH_AHEAD_METRES,
     WS_LINE,
     WS_OVERVIEW,
     WS_STOPS,
+    count_request,
 )
+from .coordinator import async_coordinators
 from .gtfs import GTFSIndex, tokenize, ul_stop_to_gtfs_area
 
 _LOGGER = logging.getLogger(__name__)
@@ -61,15 +63,10 @@ class LiveFeed:
     """Fetches and caches the two realtime feeds."""
 
     def __init__(self, hass: HomeAssistant, realtime_key: str) -> None:
+        """Hold the key and the per-feed cache; the session is shared."""
         self.hass = hass
         self.realtime_key = realtime_key
         self._cache: dict[str, _Cached] = {}
-        self._session: aiohttp.ClientSession | None = None
-
-    async def async_close(self) -> None:
-        if self._session is not None:
-            await self._session.close()
-            self._session = None
 
     async def _async_fetch(self, feed: str) -> Any:
         """Return a parsed feed, honouring the TTL and the upstream ETag."""
@@ -77,32 +74,39 @@ class LiveFeed:
         if cached.payload is not None and time.time() - cached.fetched < GTFS_RT_TTL:
             return cached.payload
 
-        if self._session is None:
-            self._session = aiohttp.ClientSession()
-
+        session = async_get_clientsession(self.hass)
         headers = {"Accept-Encoding": "gzip, deflate"}
         if cached.etag:
             headers["If-None-Match"] = cached.etag
 
-        async with async_timeout.timeout(GTFS_RT_TIMEOUT):
-            async with self._session.get(
-                GTFS_RT_URL.format(feed=feed),
-                params={"key": self.realtime_key},
-                headers=headers,
-            ) as response:
-                if response.status == 304 and cached.payload is not None:
-                    cached.fetched = time.time()
-                    return cached.payload
-                if response.status == 429:
-                    raise LiveFeedError(
-                        "Trafiklab quota exceeded. The map polls only while it "
-                        "is on screen; if this keeps happening, request a free "
-                        "quota upgrade from Trafiklab."
-                    )
-                if response.status != 200:
-                    raise LiveFeedError(f"{feed} returned HTTP {response.status}")
-                raw = await response.read()
-                etag = response.headers.get("ETag")
+        try:
+            async with asyncio.timeout(GTFS_RT_TIMEOUT):
+                async with session.get(
+                    GTFS_RT_URL.format(feed=feed),
+                    params={"key": self.realtime_key},
+                    headers=headers,
+                ) as response:
+                    # Counted here rather than on success: a 304 or a 429 is
+                    # still a request against the quota.
+                    count_request(self.hass, f"rt_{feed}")
+                    if response.status == 304 and cached.payload is not None:
+                        count_request(self.hass, "rt_not_modified")
+                        cached.fetched = time.time()
+                        return cached.payload
+                    if response.status == 429:
+                        raise LiveFeedError(
+                            "Trafiklab quota exceeded. The map polls only while "
+                            "it is on screen; if this keeps happening, request a "
+                            "free quota upgrade from Trafiklab."
+                        )
+                    if response.status != 200:
+                        raise LiveFeedError(f"{feed} returned HTTP {response.status}")
+                    raw = await response.read()
+                    etag = response.headers.get("ETag")
+        except TimeoutError as err:
+            raise LiveFeedError(f"Timed out reading the {feed} feed") from err
+        except aiohttp.ClientError as err:
+            raise LiveFeedError(f"Could not read the {feed} feed: {err}") from err
 
         message = gtfs_realtime_pb2.FeedMessage()
         message.ParseFromString(raw)
@@ -112,9 +116,11 @@ class LiveFeed:
         return message
 
     async def async_positions(self) -> Any:
+        """Where the vehicles are right now."""
         return await self._async_fetch("VehiclePositions")
 
     async def async_trip_updates(self) -> Any:
+        """Predicted arrival times per trip."""
         return await self._async_fetch("TripUpdates")
 
 
@@ -218,7 +224,7 @@ def _line_payload(trip: dict[str, Any]) -> dict[str, Any]:
         "kind": trip["kind"],
         # Sent from here so the card does not duplicate the colour table.
         "color": LINE_COLORS.get(line, "#5f6368"),
-        "text_color": "#000000" if line in LIGHT_TEXT_LINES else "#ffffff",
+        "text_color": "#000000" if line in DARK_TEXT_LINES else "#ffffff",
     }
 
 
@@ -589,6 +595,10 @@ def overview(
         wanted_destinations,
     )
     for row in scheduled:
+        if positions is None:
+            # Not fetched, so "no live data" would be our own doing rather than
+            # the feed's. Null means unknown, as it does on the rows above.
+            row["live"] = None
         vehicle = running.get(row["trip_id"])
         if vehicle is None:
             continue
@@ -720,7 +730,7 @@ def line_view(
     return {
         "line": line,
         "color": LINE_COLORS.get(line, "#5f6368"),
-        "text_color": "#000000" if line in LIGHT_TEXT_LINES else "#ffffff",
+        "text_color": "#000000" if line in DARK_TEXT_LINES else "#ffffff",
         "stop_name": index.areas.get(area_id, ("", 0, 0))[0],
         "generated": now,
         "data_age": _feed_age(positions, now),
@@ -779,9 +789,9 @@ def _stop_payload(
 @callback
 def async_register_websocket(hass: HomeAssistant) -> None:
     """Register the map commands. Safe to call more than once."""
-    if hass.data.get(f"{DOMAIN}_ws_registered"):
+    if hass.data[DOMAIN].get("ws_registered"):
         return
-    hass.data[f"{DOMAIN}_ws_registered"] = True
+    hass.data[DOMAIN]["ws_registered"] = True
     websocket_api.async_register_command(hass, ws_overview)
     websocket_api.async_register_command(hass, ws_line)
     websocket_api.async_register_command(hass, ws_stops)
@@ -819,9 +829,9 @@ def _coordinator_directions(hass: HomeAssistant, ul_stop_id: int | str) -> list[
     GTFS terminus - "Uppsala Naturstensvägen" where the app says "Flogsta
     Stenhagen".
     """
-    for coordinator in hass.data.get(DOMAIN, {}).values():
-        if getattr(coordinator, "stop_id", None) == int(ul_stop_id):
-            return ul_directions(getattr(coordinator, "board_keys", None) or {})
+    for coordinator in async_coordinators(hass):
+        if coordinator.stop_id == int(ul_stop_id):
+            return ul_directions(coordinator.board_keys)
     return []
 
 
@@ -927,7 +937,7 @@ async def ws_overview(
     except LiveFeedError as err:
         connection.send_error(msg["id"], "live_feed_error", str(err))
         return
-    except Exception as err:  # pylint: disable=broad-except
+    except Exception as err:
         _LOGGER.exception("Live map overview failed")
         connection.send_error(msg["id"], "unknown_error", str(err))
         return
@@ -966,7 +976,7 @@ async def ws_line(
     except LiveFeedError as err:
         connection.send_error(msg["id"], "live_feed_error", str(err))
         return
-    except Exception as err:  # pylint: disable=broad-except
+    except Exception as err:
         _LOGGER.exception("Live map line view failed")
         connection.send_error(msg["id"], "unknown_error", str(err))
         return

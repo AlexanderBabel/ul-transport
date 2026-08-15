@@ -1,4 +1,4 @@
-"""Assist tool: "when does the next bus leave?"
+"""Assist tool answering "when does the next bus leave?".
 
 The answer is spoken from `departures`. `card` is for a voice satellite with a
 screen: the Voice Satellite card draws any Lovelace config a tool result puts
@@ -10,13 +10,13 @@ from __future__ import annotations
 
 from typing import Any
 
-import voluptuous as vol
-
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import llm
+import voluptuous as vol
 
 from .const import DOMAIN, TRAFFIC_TYPE_MAPPING
-from .coordinator import ULTransportDataUpdateCoordinator
+from .coordinator import ULTransportDataUpdateCoordinator, async_coordinators
+
 # The same "which timestamp counts" and "how many minutes is that" rules the
 # sensors answer with; a tool that rounded differently would contradict them.
 from .sensor import _departure, _minutes_until, _parse
@@ -31,15 +31,6 @@ API_PROMPT = (
 # Enough for "and the one after that?" without filling the context with a
 # timetable the user did not ask for.
 MAX_DEPARTURES = 5
-
-
-def _coordinators(hass: HomeAssistant) -> list[ULTransportDataUpdateCoordinator]:
-    """Every configured stop. hass.data[DOMAIN] also holds the map runtime."""
-    return [
-        value
-        for value in hass.data.get(DOMAIN, {}).values()
-        if isinstance(value, ULTransportDataUpdateCoordinator)
-    ]
 
 
 def _pick(
@@ -83,7 +74,7 @@ class NextDeparturesTool(llm.Tool):
         llm_context: llm.LLMContext,
     ) -> dict[str, Any]:
         """Answer, and hand a screen the map card for the same stop."""
-        coordinators = _coordinators(hass)
+        coordinators = async_coordinators(hass)
         if not coordinators:
             return {"error": "No UL Transport stops are configured."}
 
@@ -164,11 +155,13 @@ class ULTransportAPI(llm.API):
     """The tool, as something selectable in the Assist pipeline."""
 
     def __init__(self, hass: HomeAssistant) -> None:
+        """Register under a stable id so a pipeline keeps its selection."""
         super().__init__(hass=hass, id=API_ID, name=API_NAME)
 
     async def async_get_api_instance(
         self, llm_context: llm.LLMContext
     ) -> llm.APIInstance:
+        """One instance per conversation, carrying the single tool."""
         return llm.APIInstance(
             api=self,
             api_prompt=API_PROMPT,

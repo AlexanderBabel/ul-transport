@@ -1,14 +1,14 @@
 """Tests for the live map: GTFS indexing and the two map views."""
 from __future__ import annotations
 
+from datetime import datetime, time as dtime, timedelta
 import io
 import time
 import zipfile
-from datetime import datetime, time as dtime, timedelta
 from zoneinfo import ZoneInfo
 
-import pytest
 from google.transit import gtfs_realtime_pb2
+import pytest
 
 from custom_components.ul_transport.gtfs import (
     GTFSIndex,
@@ -132,7 +132,9 @@ def _clock(now: float, offset_minutes: float) -> str:
 
 def _timetable_zip(now: float, service_dates: str | None = None) -> bytes:
     """The same stops, with three line-2 trips timed against ``now``."""
-    at = lambda offset: _clock(now, offset)
+    def at(offset: float) -> str:
+        return _clock(now, offset)
+
     stop_times = (
         "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
         # Sets off in two minutes, due at my stop in ten.
@@ -216,7 +218,7 @@ def _positions(*trips: tuple[str, float, float]) -> gtfs_realtime_pb2.FeedMessag
 
 
 def _updates(spec: dict[str, list[tuple[int, float, int]]]):
-    """spec: trip_id -> [(stop_sequence, epoch, delay)]"""
+    """Build a TripUpdates feed from trip_id -> [(stop_sequence, epoch, delay)]."""
     feed = gtfs_realtime_pb2.FeedMessage()
     feed.header.gtfs_realtime_version = "2.0"
     for trip_id, calls in spec.items():
@@ -903,13 +905,13 @@ class TestTimetable:
         """The other half of the "not yet running" bug: position, no trip update."""
         index, now = timetabled
         positions = _positions(("T_RUNNING", 59.870, 17.670))
-        row = [
+        row = next(
             v
             for v in overview(index, positions, _updates({}), MY_UL_ID, now=now)[
                 "vehicles"
             ]
             if v["trip_id"] == "T_RUNNING"
-        ][0]
+        )
         assert row["on_map"] is True
         assert row["live"] is True
         assert row["started"] is True
@@ -921,13 +923,13 @@ class TestTimetable:
         index, now = timetabled
         # On its first call; mine is the next one.
         positions = _positions(("T_RUNNING", 59.8755, 17.6756))
-        row = [
+        row = next(
             v
             for v in overview(index, positions, _updates({}), MY_UL_ID, now=now)[
                 "vehicles"
             ]
             if v["trip_id"] == "T_RUNNING"
-        ][0]
+        )
         assert row["stops_away"] == 1
 
     def test_says_whether_the_bus_should_be_out_there_yet(self, timetabled):
@@ -1032,6 +1034,15 @@ class TestListOnly:
         assert vehicle["stops_away"] == 1
         assert vehicle["on_map"] is False
         assert "path" not in vehicle
+
+    def test_timetabled_rows_do_not_claim_a_missing_position(self, timetabled):
+        """Null, not absent: without the feed, "no live data" is our own doing."""
+        index, now = timetabled
+        rows = overview(
+            index, None, _updates({}), MY_UL_ID, list_minutes=120, now=now
+        )["vehicles"]
+        assert rows and all(row["scheduled"] for row in rows)
+        assert all(row["live"] is None for row in rows)
 
     def test_freshness_comes_from_the_feed_it_did_read(self, index):
         now = float(int(time.time()))

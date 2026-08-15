@@ -15,6 +15,20 @@ const LEAFLET_CSS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
 
 let leafletPromise = null;
 
+/**
+ * `a ?? b`, spelled out.
+ *
+ * Home Assistant still ships a legacy bundle and picks it from a strict
+ * user-agent test - anything below roughly Chrome 109 or iOS 18.5 gets it, and
+ * a wall tablet is exactly that. HA renders fine there; a card written in
+ * syntax those engines cannot parse does not, and the failure is silent: the
+ * module never runs, the element is never defined, and the dashboard shows a
+ * bare error box. So this file stays on ES2017 - no `??`, no `?.`.
+ */
+function or(value, fallback) {
+  return value === undefined || value === null ? fallback : value;
+}
+
 function loadLeaflet() {
   if (window.L) return Promise.resolve(window.L);
   if (leafletPromise) return leafletPromise;
@@ -82,7 +96,10 @@ function stopsLabel(vehicle) {
   // A timetabled departure with no vehicle behind it means one of two things,
   // and "not yet running" is only one of them.
   if (vehicle.scheduled && !vehicle.live) {
-    return vehicle.started ? "no live data" : "not yet running";
+    if (!vehicle.started) return "not yet running";
+    // null, not false: the positions feed was never fetched, so having no
+    // position is our own doing rather than the bus's. See live.py.
+    return vehicle.live === null ? "timetabled arrival" : "no live data";
   }
   // Timetabled time, live position: on the road but not predicting arrivals.
   // Where it has got to comes from that position and is as live as any other
@@ -334,8 +351,13 @@ class ULTransportMap extends HTMLElement {
       : {
           type: "ul_transport/map/overview",
           stop_id: this._config.stop_id,
-          // Nothing to plot means the positions feed is not worth fetching.
-          include_positions: this._hasMap,
+          // Positions cost a second upstream request and a list has nothing to
+          // plot with them - but they are also the only thing that can say a
+          // timetabled departure is actually out on the road, so they are worth
+          // it. `include_positions: false` in YAML buys the request back.
+          ...(this._config.include_positions === false
+            ? { include_positions: false }
+            : {}),
           // A whole-day list at a hub is thousands of departures; only the
           // rows that will be drawn are worth sending.
           limit: Math.min(this._config.list_count, 200),
@@ -440,7 +462,7 @@ class ULTransportMap extends HTMLElement {
     const card = this.shadowRoot.querySelector("ha-card");
     if (!card) return;
     const layout = this._config.layout;
-    const measured = width ?? card.getBoundingClientRect().width;
+    const measured = or(width, card.getBoundingClientRect().width);
     const wide =
       layout === "wide" || (layout !== "stacked" && measured >= 620);
     card.toggleAttribute("data-wide", wide && this._config.content === "both");
@@ -611,7 +633,7 @@ class ULTransportMap extends HTMLElement {
     }
 
     this.shadowRoot.querySelector(".title").textContent =
-      this._config.title ?? (this._line ? `Line ${this._line}` : data.stop_name || "Live buses");
+      or(this._config.title, this._line ? `Line ${this._line}` : data.stop_name || "Live buses");
     this.shadowRoot.querySelector(".subtitle").textContent = this._data
       ? this._line
         ? `${count} on this line · ${data.stop_name || ""}`.replace(/ · $/, "")
@@ -732,7 +754,7 @@ class ULTransportMap extends HTMLElement {
       // corner ago. Point the arrow where the dot is actually going.
       if (metres(from, bus.shown) > 2) {
         const step = bearing(from, bus.shown);
-        const current = bus.heading ?? bus.bearing ?? step;
+        const current = or(or(bus.heading, bus.bearing), step);
         const delta = turn(current, step);
         // A step pointing backwards is a correction landing - a fresh position
         // behind where the dead reckoning had run to, or a bus put back at the
@@ -742,11 +764,12 @@ class ULTransportMap extends HTMLElement {
       }
     }
     bus.marker.setLatLng(bus.shown);
-    const heading = bus.heading ?? bus.bearing;
+    const heading = or(bus.heading, bus.bearing);
+    const element = bus.marker.getElement();
     const dir =
-      heading === null || heading === undefined
+      heading === null || heading === undefined || !element
         ? null
-        : bus.marker.getElement()?.querySelector(".dir");
+        : element.querySelector(".dir");
     if (dir) dir.style.transform = `rotate(${heading}deg)`;
   }
 
@@ -878,7 +901,20 @@ class ULTransportMap extends HTMLElement {
   }
 }
 
-customElements.define("ul-transport-map", ULTransportMap);
+// Always attempt the definition, never gate it on a lookup. Home Assistant
+// hands this file to the browser three ways, so a second run is normal - but a
+// guard that asks "already defined?" first and gets a wrong answer skips the
+// definition silently, and the card is then missing with nothing logged. A
+// redefine throws, which is the harmless half of the trade.
+try {
+  customElements.define("ul-transport-map", ULTransportMap);
+} catch (err) {
+  // A card that cannot register itself is simply absent from the dashboard,
+  // and all Home Assistant can say is that the element does not exist. Leave
+  // the reason somewhere reachable rather than swallowing it.
+  window.__ulTransportDefineError = String(err);
+  console.error("ul-transport-map: could not define the card", err);
+}
 
 /** Visual editor, built on HA's own <ha-form> so it matches every other card. */
 const LABELS = {
@@ -1147,8 +1183,8 @@ class ULTransportMapEditor extends HTMLElement {
         <div class="warn" id="warn" hidden></div>
       `;
       this._form = document.createElement("ha-form");
-      this._form.computeLabel = (schema) => LABELS[schema.name] ?? schema.name;
-      this._form.computeHelper = (schema) => HELPERS[schema.name] ?? "";
+      this._form.computeLabel = (schema) => or(LABELS[schema.name], schema.name);
+      this._form.computeHelper = (schema) => or(HELPERS[schema.name], "");
       this._form.addEventListener("value-changed", (event) => {
         const next = { ...event.detail.value };
         if (next.stop_id !== undefined) next.stop_id = Number(next.stop_id);
@@ -1204,14 +1240,23 @@ class ULTransportMapEditor extends HTMLElement {
   }
 }
 
-customElements.define("ul-transport-map-editor", ULTransportMapEditor);
+try {
+  customElements.define("ul-transport-map-editor", ULTransportMapEditor);
+} catch (err) {
+  window.__ulTransportEditorDefineError = String(err);
+  console.error("ul-transport-map-editor: could not define the editor", err);
+}
 
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "ul-transport-map",
-  name: "UL Transport Live Map",
-  description: "Live UL buses inbound to your configured stops.",
-  documentationURL: "https://github.com/AlexanderBabel/ul-transport#live-map",
-  // Renders the real card in the picker rather than a static screenshot.
-  preview: true,
-});
+// Guarded like the definitions above: a page that loaded the module twice
+// would otherwise list the card twice in the picker.
+if (!window.customCards.some((card) => card.type === "ul-transport-map")) {
+  window.customCards.push({
+    type: "ul-transport-map",
+    name: "UL Transport Live Map",
+    description: "Live UL buses inbound to your configured stops.",
+    documentationURL: "https://github.com/AlexanderBabel/ul-transport#live-map",
+    // Renders the real card in the picker rather than a static screenshot.
+    preview: true,
+  });
+}

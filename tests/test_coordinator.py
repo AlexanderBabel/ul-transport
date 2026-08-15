@@ -1,14 +1,19 @@
 """Tests for UL Transport coordinator."""
-from datetime import timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC
+from unittest.mock import patch
 
 import aiohttp
-import pytest
 from homeassistant.helpers.update_coordinator import UpdateFailed
+import pytest
 
 from custom_components.ul_transport.coordinator import ULTransportDataUpdateCoordinator
 
-from .conftest import MOCK_DEPARTURES_RESPONSE, MOCK_STOP_ID, MOCK_STOP_NAME
+from .conftest import (
+    MOCK_DEPARTURES_RESPONSE,
+    MOCK_STOP_ID,
+    MOCK_STOP_NAME,
+    build_session,
+)
 
 
 def _make_coordinator(hass, selected_lines=None, scan_interval=60):
@@ -19,13 +24,6 @@ def _make_coordinator(hass, selected_lines=None, scan_interval=60):
         selected_lines or [],
         scan_interval,
     )
-
-
-def _mock_response(status=200, json_data=None):
-    response = AsyncMock()
-    response.status = status
-    response.json = AsyncMock(return_value=json_data or MOCK_DEPARTURES_RESPONSE)
-    return response
 
 
 @pytest.fixture
@@ -44,12 +42,9 @@ class TestCoordinatorInit:
 class TestCoordinatorFetch:
     async def test_groups_departures_by_line_direction(self, coordinator):
         with patch(
-            "custom_components.ul_transport.coordinator.aiohttp.ClientSession"
-        ) as mock_session_cls:
-            mock_session_cls.return_value.__aenter__ = AsyncMock(
-                return_value=_build_session_mock(200, MOCK_DEPARTURES_RESPONSE)
-            )
-            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    "custom_components.ul_transport.coordinator.async_get_clientsession",
+    return_value=build_session(200, MOCK_DEPARTURES_RESPONSE),
+):
 
             data = await coordinator._async_update_data()
 
@@ -60,42 +55,31 @@ class TestCoordinatorFetch:
 
     async def test_sets_last_successful_update_on_success(self, coordinator):
         with patch(
-            "custom_components.ul_transport.coordinator.aiohttp.ClientSession"
-        ) as mock_session_cls:
-            mock_session_cls.return_value.__aenter__ = AsyncMock(
-                return_value=_build_session_mock(200, MOCK_DEPARTURES_RESPONSE)
-            )
-            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    "custom_components.ul_transport.coordinator.async_get_clientsession",
+    return_value=build_session(200, MOCK_DEPARTURES_RESPONSE),
+):
 
             assert coordinator.last_successful_update is None
             await coordinator._async_update_data()
 
         assert coordinator.last_successful_update is not None
-        assert coordinator.last_successful_update.tzinfo == timezone.utc
+        assert coordinator.last_successful_update.tzinfo == UTC
 
     async def test_does_not_update_last_successful_update_on_failure(self, coordinator):
         with patch(
-            "custom_components.ul_transport.coordinator.aiohttp.ClientSession"
-        ) as mock_session_cls:
-            mock_session_cls.return_value.__aenter__ = AsyncMock(
-                return_value=_build_session_mock(500, {})
-            )
-            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            with pytest.raises(UpdateFailed):
-                await coordinator._async_update_data()
+    "custom_components.ul_transport.coordinator.async_get_clientsession",
+    return_value=build_session(500, {}),
+), pytest.raises(UpdateFailed):
+            await coordinator._async_update_data()
 
         assert coordinator.last_successful_update is None
 
     async def test_filters_by_selected_lines(self, hass):
         coord = _make_coordinator(hass, selected_lines=["2_Uppsala Central"])
         with patch(
-            "custom_components.ul_transport.coordinator.aiohttp.ClientSession"
-        ) as mock_session_cls:
-            mock_session_cls.return_value.__aenter__ = AsyncMock(
-                return_value=_build_session_mock(200, MOCK_DEPARTURES_RESPONSE)
-            )
-            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    "custom_components.ul_transport.coordinator.async_get_clientsession",
+    return_value=build_session(200, MOCK_DEPARTURES_RESPONSE),
+):
 
             data = await coord._async_update_data()
 
@@ -104,39 +88,24 @@ class TestCoordinatorFetch:
 
     async def test_raises_on_rate_limit(self, coordinator):
         with patch(
-            "custom_components.ul_transport.coordinator.aiohttp.ClientSession"
-        ) as mock_session_cls:
-            mock_session_cls.return_value.__aenter__ = AsyncMock(
-                return_value=_build_session_mock(429, {})
-            )
-            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            with pytest.raises(UpdateFailed, match="rate limit"):
-                await coordinator._async_update_data()
+    "custom_components.ul_transport.coordinator.async_get_clientsession",
+    return_value=build_session(429, {}),
+), pytest.raises(UpdateFailed, match="rate limit"):
+            await coordinator._async_update_data()
 
     async def test_raises_on_non_200(self, coordinator):
         with patch(
-            "custom_components.ul_transport.coordinator.aiohttp.ClientSession"
-        ) as mock_session_cls:
-            mock_session_cls.return_value.__aenter__ = AsyncMock(
-                return_value=_build_session_mock(500, {})
-            )
-            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            with pytest.raises(UpdateFailed, match="500"):
-                await coordinator._async_update_data()
+    "custom_components.ul_transport.coordinator.async_get_clientsession",
+    return_value=build_session(500, {}),
+), pytest.raises(UpdateFailed, match="500"):
+            await coordinator._async_update_data()
 
     async def test_raises_on_client_error(self, coordinator):
         with patch(
-            "custom_components.ul_transport.coordinator.aiohttp.ClientSession"
-        ) as mock_session_cls:
-            session_mock = MagicMock()
-            session_mock.__aenter__ = AsyncMock(side_effect=aiohttp.ClientError("connection refused"))
-            session_mock.__aexit__ = AsyncMock(return_value=False)
-            mock_session_cls.return_value = session_mock
-
-            with pytest.raises(UpdateFailed, match="connection refused"):
-                await coordinator._async_update_data()
+            "custom_components.ul_transport.coordinator.async_get_clientsession",
+            return_value=build_session(error=aiohttp.ClientError("connection refused")),
+        ), pytest.raises(UpdateFailed, match="connection refused"):
+            await coordinator._async_update_data()
 
     async def test_limits_to_five_departures(self, hass):
         """Ensure more than 5 departures are capped at 5."""
@@ -154,12 +123,9 @@ class TestCoordinatorFetch:
         }
         coord = _make_coordinator(hass)
         with patch(
-            "custom_components.ul_transport.coordinator.aiohttp.ClientSession"
-        ) as mock_session_cls:
-            mock_session_cls.return_value.__aenter__ = AsyncMock(
-                return_value=_build_session_mock(200, many_deps)
-            )
-            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    "custom_components.ul_transport.coordinator.async_get_clientsession",
+    return_value=build_session(200, many_deps),
+):
 
             data = await coord._async_update_data()
 
@@ -186,12 +152,9 @@ class TestCoordinatorFetch:
         }
         coord = _make_coordinator(hass)
         with patch(
-            "custom_components.ul_transport.coordinator.aiohttp.ClientSession"
-        ) as mock_session_cls:
-            mock_session_cls.return_value.__aenter__ = AsyncMock(
-                return_value=_build_session_mock(200, unsorted_deps)
-            )
-            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    "custom_components.ul_transport.coordinator.async_get_clientsession",
+    return_value=build_session(200, unsorted_deps),
+):
 
             data = await coord._async_update_data()
 
@@ -199,20 +162,3 @@ class TestCoordinatorFetch:
         first_time = deps[0].get("realTimeDepartureDateTime") or deps[0]["departureDateTime"]
         second_time = deps[1].get("realTimeDepartureDateTime") or deps[1]["departureDateTime"]
         assert first_time <= second_time
-
-
-# --- helpers ---
-
-def _build_session_mock(status, json_data):
-    """Build a mock that acts as the session returned by __aenter__."""
-    response = AsyncMock()
-    response.status = status
-    response.json = AsyncMock(return_value=json_data)
-
-    cm = AsyncMock()
-    cm.__aenter__ = AsyncMock(return_value=response)
-    cm.__aexit__ = AsyncMock(return_value=False)
-
-    session = MagicMock()
-    session.get = MagicMock(return_value=cm)
-    return session

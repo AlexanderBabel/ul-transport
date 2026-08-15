@@ -8,32 +8,32 @@ it, rather than parsing on demand.
 """
 from __future__ import annotations
 
+import asyncio
 import bisect
 import collections
+from collections.abc import Iterator
 import csv
+from dataclasses import dataclass, field
 import datetime as dt
 import io
 import logging
 import math
-import re
 import pickle
+import re
 import time
+from typing import Any
 import zipfile
-from dataclasses import dataclass, field
-from typing import Any, Iterator
-
 from zoneinfo import ZoneInfo
 
-import aiohttp
-import async_timeout
-
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     GTFS_CACHE_FILE,
     GTFS_STATIC_MAX_AGE,
     GTFS_STATIC_TIMEOUT,
     GTFS_STATIC_URL,
+    count_request,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -212,7 +212,10 @@ class GTFSIndex:
         if not trip or not trip["stops"]:
             return False
         mine = self.platforms.get(area_id, set())
-        here = lambda stop_id: stop_id == area_id or stop_id in mine
+
+        def here(stop_id: str) -> bool:
+            return stop_id == area_id or stop_id in mine
+
         return here(trip["stops"][-1][1]) and not here(trip["stops"][0][1])
 
     def seq_near(self, trip_id: str, lat: float, lon: float) -> int | None:
@@ -464,7 +467,7 @@ def build_index(raw: bytes, ul_stop_ids: list[int | str]) -> GTFSIndex:
 
     # A line has several shape variants (line 1 has 15); longest first so the
     # line view can default to the most representative one.
-    for line, shape_ids in index.line_shapes.items():
+    for shape_ids in index.line_shapes.values():
         shape_ids.sort(key=lambda s: len(index.shapes.get(s, ())), reverse=True)
 
     # Keep only stops actually referenced by the trips we kept.
@@ -501,7 +504,7 @@ def _load_cache(path: str) -> GTFSIndex | None:
             index = pickle.load(handle)
     except FileNotFoundError:
         return None
-    except Exception as err:  # a corrupt cache is rebuildable, never fatal
+    except Exception as err:  # noqa: BLE001 - a corrupt cache is rebuildable
         _LOGGER.warning("Discarding unreadable GTFS cache: %s", err)
         return None
     return index if isinstance(index, GTFSIndex) else None
@@ -533,27 +536,29 @@ async def async_load_index(
     if index is not None and not index.stale and index.covers(ul_stop_ids) and not force:
         return index
 
-    session = aiohttp.ClientSession()
+    session = async_get_clientsession(hass)
     try:
-        async with async_timeout.timeout(GTFS_STATIC_TIMEOUT):
+        async with asyncio.timeout(GTFS_STATIC_TIMEOUT):
             # This endpoint 406s without an explicit Accept-Encoding.
             async with session.get(
                 GTFS_STATIC_URL,
                 params={"key": static_key},
                 headers={"Accept-Encoding": "gzip, deflate"},
             ) as response:
+                count_request(hass, "gtfs_static")
                 if response.status != 200:
                     raise GTFSError(
                         f"Static GTFS download failed: HTTP {response.status}"
                     )
                 raw = await response.read()
     except Exception as err:
+        # Deliberately broad: any failure to refresh degrades to the index we
+        # already have rather than emptying the map. Only a first run with no
+        # cache at all is fatal.
         if index is not None:
             _LOGGER.warning("Using stale GTFS index; refresh failed: %s", err)
             return index
         raise GTFSError(f"Could not download static GTFS: {err}") from err
-    finally:
-        await session.close()
 
     fresh = await hass.async_add_executor_job(build_index, raw, ul_stop_ids)
     if not fresh.trips and index is not None:

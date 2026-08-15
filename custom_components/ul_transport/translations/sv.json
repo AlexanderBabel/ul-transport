@@ -71,6 +71,9 @@
     "sensor": {
       "last_update": {
         "name": "Senaste uppdatering"
+      },
+      "next_departure": {
+        "name": "Nästa avgång"
       }
     }
   }

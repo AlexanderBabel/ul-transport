@@ -1,0 +1,5 @@
+# Pinned loosely: pytest-homeassistant-custom-component pulls the matching
+# Home Assistant release, so bumping it is how this tracks core.
+pytest-homeassistant-custom-component>=0.13.250
+gtfs-realtime-bindings>=1.0.0
+pytest-cov>=5.0.0

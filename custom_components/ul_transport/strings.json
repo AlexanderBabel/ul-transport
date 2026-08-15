@@ -71,6 +71,9 @@
     "sensor": {
       "last_update": {
         "name": "Last Update"
+      },
+      "next_departure": {
+        "name": "Next departure"
       }
     }
   }

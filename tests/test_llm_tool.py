@@ -4,7 +4,7 @@ The card config in the result is the contract with the voice satellite: the
 satellite draws whatever Lovelace config lands there, so a wrong stop_id shows
 the wrong stop's board on the tablet without the spoken answer being wrong.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -12,11 +12,11 @@ from custom_components.ul_transport.const import DOMAIN
 from custom_components.ul_transport.coordinator import ULTransportDataUpdateCoordinator
 from custom_components.ul_transport.llm_tool import NextDeparturesTool
 
-from .conftest import MOCK_STOP_ID, MOCK_STOP_NAME
+from .conftest import MOCK_STOP_ID, MOCK_STOP_NAME, add_stop
 
 
 def _stamp(minutes: float) -> str:
-    when = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+    when = datetime.now(UTC) + timedelta(minutes=minutes)
     return when.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -37,7 +37,8 @@ class _ToolInput:
 
 
 @pytest.fixture
-def hass_with_stop(hass):
+def stop(hass):
+    """One set-up stop, reachable the way the integration leaves it."""
     coordinator = ULTransportDataUpdateCoordinator(
         hass, MOCK_STOP_ID, MOCK_STOP_NAME, [], 60
     )
@@ -45,7 +46,12 @@ def hass_with_stop(hass):
         "2_Uppsala Central": [_departure(4.05, 6.05), _departure(20.05)],
         "8_Gottsunda": [_departure(2.05, 2.05, line="8", towards="Gottsunda")],
     }
-    hass.data[DOMAIN] = {"entry_id": coordinator, "map_loading": False}
+    add_stop(hass, coordinator)
+    return coordinator
+
+
+@pytest.fixture
+def hass_with_stop(hass, stop):
     return hass
 
 
@@ -95,7 +101,7 @@ async def test_a_misheard_stop_name_still_answers_the_only_stop(hass_with_stop):
 async def test_an_unknown_stop_lists_the_configured_ones(hass, hass_with_stop):
     other = ULTransportDataUpdateCoordinator(hass, 1, "Vaksala torg", [], 60)
     other.data = {}
-    hass.data[DOMAIN]["other_entry"] = other
+    add_stop(hass, other, stop_id=1)
 
     result = await _call(hass_with_stop, stop="Gothenburg")
 
@@ -103,8 +109,8 @@ async def test_an_unknown_stop_lists_the_configured_ones(hass, hass_with_stop):
     assert set(result["configured_stops"]) == {MOCK_STOP_NAME, "Vaksala torg"}
 
 
-async def test_no_departures_still_hands_over_a_card(hass_with_stop):
-    hass_with_stop.data[DOMAIN]["entry_id"].data = {}
+async def test_no_departures_still_hands_over_a_card(hass_with_stop, stop):
+    stop.data = {}
 
     result = await _call(hass_with_stop)
 

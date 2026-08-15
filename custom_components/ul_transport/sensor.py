@@ -5,38 +5,39 @@ sensor is "minutes until the next bus", which a numeric_state trigger can use
 directly, with the timestamps alongside it as attributes. The live map card
 draws its own data over the websocket and needs none of these.
 """
+
 from __future__ import annotations
 
-import logging
 from datetime import datetime
+import logging
 from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
+    SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTime
+from homeassistant.const import EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    DOMAIN,
-    CONF_STOP_NAME,
-    TRAFFIC_TYPE_MAPPING,
-    TRAFFIC_TYPE_ICONS,
     DEFAULT_ICON,
+    DOMAIN,
+    REQUEST_COUNTS,
+    TRAFFIC_TYPE_ICONS,
+    TRAFFIC_TYPE_MAPPING,
 )
-from .coordinator import ULTransportDataUpdateCoordinator
+from .coordinator import ULTransportConfigEntry, ULTransportDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 # Suffixes this integration currently creates. Anything else on the entry is a
 # leftover from the departures-card sensors, which no longer exist.
-CURRENT_SUFFIXES = ("_in", "_next_departure", "_last_update")
+CURRENT_SUFFIXES = ("_in", "_next_departure", "_last_update", "_api_requests")
 
 
 def _parse(value: str | None) -> datetime | None:
@@ -50,9 +51,9 @@ def _parse(value: str | None) -> datetime | None:
 
 def _departure(departure: dict[str, Any]) -> datetime | None:
     """When this bus actually leaves: real time if there is any, else planned."""
-    return _parse(
-        departure.get("realTimeDepartureDateTime")
-    ) or _parse(departure.get("departureDateTime"))
+    return _parse(departure.get("realTimeDepartureDateTime")) or _parse(
+        departure.get("departureDateTime")
+    )
 
 
 def _minutes_until(when: datetime | None) -> int | None:
@@ -68,30 +69,37 @@ def _minutes_until(when: datetime | None) -> int | None:
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    config_entry: ULTransportConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up UL Transport sensors from a config entry."""
-    coordinator: ULTransportDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
-    stop_name = config_entry.data[CONF_STOP_NAME]
+    coordinator = config_entry.runtime_data
 
     sensors: list[SensorEntity] = [
-        ULNextDepartureSensor(coordinator, stop_name),
-        ULTransportLastUpdateSensor(coordinator, stop_name),
+        ULNextDepartureSensor(coordinator),
+        ULTransportLastUpdateSensor(coordinator),
     ]
     sensors += [
-        ULLineDepartureSensor(coordinator, key, stop_name)
+        ULLineDepartureSensor(coordinator, key)
         for key, departures in coordinator.data.items()
         if departures
     ]
 
+    # One per install, not per stop - the quota it watches is account-wide. The
+    # first entry set up owns it; see async_unload_entry for the handover.
+    if (
+        hass.data[DOMAIN].setdefault("counter_entry", config_entry.entry_id)
+        == config_entry.entry_id
+    ):
+        sensors.append(ULApiRequestsSensor(hass))
+
     _prune_removed_entities(hass, config_entry)
-    async_add_entities(sensors, True)
-
-    config_entry.async_on_unload(config_entry.add_update_listener(update_listener))
+    async_add_entities(sensors)
 
 
-def _prune_removed_entities(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+def _prune_removed_entities(
+    hass: HomeAssistant, config_entry: ULTransportConfigEntry
+) -> None:
     """Drop registry entries for sensors this integration no longer creates.
 
     Matched on the id shape rather than on what exists right now, so a line that
@@ -104,16 +112,23 @@ def _prune_removed_entities(hass: HomeAssistant, config_entry: ConfigEntry) -> N
             registry.async_remove(entry.entity_id)
 
 
-async def update_listener(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
-    """Handle options update."""
-    await hass.config_entries.async_reload(config_entry.entry_id)
-
-
-class _ULDepartureSensor(CoordinatorEntity, SensorEntity):
+class _ULDepartureSensor(
+    CoordinatorEntity[ULTransportDataUpdateCoordinator], SensorEntity
+):
     """Minutes until the next departure, with the times as attributes."""
 
+    _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.DURATION
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
+
+    def __init__(self, coordinator: ULTransportDataUpdateCoordinator) -> None:
+        """Attach the sensor to its stop."""
+        super().__init__(coordinator)
+        self._attr_device_info = coordinator.device_info
+
+    @property
+    def _stop_name(self) -> str:
+        return self.coordinator.stop_name
 
     def _departures(self) -> list[dict[str, Any]]:
         """Upcoming departures for this sensor, earliest first."""
@@ -126,7 +141,13 @@ class _ULDepartureSensor(CoordinatorEntity, SensorEntity):
         return _minutes_until(_departure(upcoming[0])) if upcoming else None
 
     @property
+    def available(self) -> bool:
+        """Available while the poll is succeeding and something is due."""
+        return self.coordinator.last_update_success and bool(self._departures())
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        """The next departure in full, plus the ones after it."""
         upcoming = self._departures()
         if not upcoming:
             return {}
@@ -162,6 +183,7 @@ class _ULDepartureSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def icon(self) -> str:
+        """Match the icon to what is actually turning up."""
         upcoming = self._departures()
         if not upcoming:
             return DEFAULT_ICON
@@ -173,25 +195,20 @@ class ULLineDepartureSensor(_ULDepartureSensor):
     """One line in one direction from one stop."""
 
     def __init__(
-        self,
-        coordinator: ULTransportDataUpdateCoordinator,
-        key: str,
-        stop_name: str,
+        self, coordinator: ULTransportDataUpdateCoordinator, key: str
     ) -> None:
+        """Initialize the sensor for one "line_towards" key."""
         super().__init__(coordinator)
         self._key = key
-        self._stop_name = stop_name
 
         line_name, _, direction = key.partition("_")
-        self._attr_name = f"{stop_name} Line {line_name} to {direction}"
+        # Not a translation key: the name is built from live API data, so there
+        # is nothing to translate beyond the word "Line".
+        self._attr_name = f"Line {line_name} to {direction}"
         self._attr_unique_id = f"{coordinator.stop_id}_{key}_in"
 
     def _departures(self) -> list[dict[str, Any]]:
         return self.coordinator.data.get(self._key) or []
-
-    @property
-    def available(self) -> bool:
-        return self.coordinator.last_update_success and bool(self._departures())
 
 
 class ULNextDepartureSensor(_ULDepartureSensor):
@@ -201,14 +218,11 @@ class ULNextDepartureSensor(_ULDepartureSensor):
     turns up, only that something does.
     """
 
-    def __init__(
-        self,
-        coordinator: ULTransportDataUpdateCoordinator,
-        stop_name: str,
-    ) -> None:
+    _attr_translation_key = "next_departure"
+
+    def __init__(self, coordinator: ULTransportDataUpdateCoordinator) -> None:
+        """Initialize the whole-stop sensor."""
         super().__init__(coordinator)
-        self._stop_name = stop_name
-        self._attr_name = f"{stop_name} Next departure"
         self._attr_unique_id = f"{coordinator.stop_id}_next_departure"
 
     def _departures(self) -> list[dict[str, Any]]:
@@ -217,33 +231,28 @@ class ULNextDepartureSensor(_ULDepartureSensor):
             for group in (self.coordinator.data or {}).values()
             for departure in group
         ]
-        return sorted(
-            (d for d in merged if _departure(d) is not None), key=_departure
-        )
-
-    @property
-    def available(self) -> bool:
-        return self.coordinator.last_update_success and bool(self._departures())
+        return sorted((d for d in merged if _departure(d) is not None), key=_departure)
 
 
-class ULTransportLastUpdateSensor(CoordinatorEntity, SensorEntity):
+class ULTransportLastUpdateSensor(
+    CoordinatorEntity[ULTransportDataUpdateCoordinator], SensorEntity
+):
     """Sensor reporting the timestamp of the last successful API fetch."""
 
+    _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:clock-check-outline"
+    _attr_translation_key = "last_update"
 
-    def __init__(
-        self,
-        coordinator: ULTransportDataUpdateCoordinator,
-        stop_name: str,
-    ) -> None:
+    def __init__(self, coordinator: ULTransportDataUpdateCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-        self._attr_name = f"{stop_name} Last Update"
         self._attr_unique_id = f"{coordinator.stop_id}_last_update"
+        self._attr_device_info = coordinator.device_info
 
     @property
-    def native_value(self):
+    def native_value(self) -> datetime | None:
         """Return the last successful update time."""
         return self.coordinator.last_successful_update
 
@@ -251,3 +260,58 @@ class ULTransportLastUpdateSensor(CoordinatorEntity, SensorEntity):
     def available(self) -> bool:
         """Return True once at least one fetch has succeeded."""
         return self.coordinator.last_successful_update is not None
+
+
+class ULApiRequestsSensor(SensorEntity):
+    """Upstream HTTP requests made since Home Assistant started.
+
+    Exists to answer "am I anywhere near the Trafiklab quota", so it counts
+    calls rather than successes: a 304 or a 429 is spent quota too. Account-wide
+    rather than per stop, so it belongs to no single stop's device.
+    """
+
+    _attr_name = "UL Transport API requests"
+    _attr_unique_id = f"{DOMAIN}_api_requests"
+    _attr_icon = "mdi:api"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = "requests"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_should_poll = False
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        """Read the tally straight out of hass.data.
+
+        Held privately rather than on ``self.hass``, which the entity platform
+        owns, so the counter can also be read before the entity is added.
+        """
+        self._hass = hass
+        self._since = dt_util.utcnow()
+
+    @property
+    def _counts(self) -> dict[str, int]:
+        return self._hass.data.get(DOMAIN, {}).get(REQUEST_COUNTS, {})
+
+    @property
+    def native_value(self) -> int:
+        """Every upstream call this process has made."""
+        return sum(self._counts.values())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """The tally per feed, plus what the Trafiklab quota actually sees."""
+        counts = self._counts
+        # ul_departures goes to UL's own API, which has no published quota;
+        # everything else is Trafiklab. not_modified is a tally of the rt_ calls
+        # that came back empty, not a request of its own, so it is not summed.
+        trafiklab = sum(
+            value
+            for key, value in counts.items()
+            if key not in ("rt_not_modified", "ul_departures")
+        )
+        hours = max((dt_util.utcnow() - self._since).total_seconds() / 3600, 1 / 60)
+        return {
+            **counts,
+            "trafiklab_total": trafiklab,
+            "trafiklab_per_hour": round(trafiklab / hours, 1),
+            "since": self._since,
+        }

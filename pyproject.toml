@@ -1,0 +1,74 @@
+[project]
+name = "ul-transport"
+version = "2.0.1"
+description = "Home Assistant integration for UL (Upplands Lokaltrafik) departures, with a live map card"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+# Home Assistant's own core ruleset, trimmed to what a custom integration needs.
+select = [
+    "A",     # builtin shadowing
+    "ASYNC", # blocking calls in async code
+    "B",     # bugbear
+    "BLE",   # blind except
+    "C4",    # comprehensions
+    "D",     # docstrings
+    "E",     # pycodestyle errors
+    "F",     # pyflakes
+    "I",     # import sorting
+    "ICN",   # import conventions
+    "INP",   # implicit namespace packages
+    "ISC",   # implicit string concat
+    "LOG",   # logging misuse
+    "N",     # naming
+    "PGH",   # blanket noqa / type-ignore
+    "PIE",   # misc lints
+    "PL",    # pylint
+    "RET",   # return simplifications
+    "RUF",   # ruff-specific
+    "SIM",   # simplify
+    "SLOT",
+    "T20",   # print statements
+    "TRY",   # exception antipatterns
+    "UP",    # pyupgrade
+    "W",     # pycodestyle warnings
+]
+ignore = [
+    "D203",    # incompatible with D211
+    "D213",    # incompatible with D212
+    "D401",    # this codebase describes what a thing IS, not what it does
+    "E501",    # line length is the formatter's job
+    "N818",    # CannotConnect is Home Assistant's own config-flow convention
+    "PLR0911", # these are data-shaping functions; branch counts are inherent
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+    "PLR0917", # the map views are pure functions with a lot of tunables
+    "PLR2004", # magic values read fine in transit maths
+    "TRY003",  # messages belong at the raise site, not in bespoke classes
+    "TRY301",  # an inner function that only raises is worse than the raise
+    "TRY400",  # .exception() is not always wanted where the error is expected
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D100", "D101", "D102", "D103", "D104", "PLC0415", "PLR2004", "SLF001"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+known-first-party = ["custom_components", "tests"]
+combine-as-imports = true
+split-on-trailing-comma = false
+
+[tool.ruff.lint.pylint]
+max-branches = 30
+max-statements = 60
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

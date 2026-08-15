@@ -17,6 +17,11 @@ draws the buses actually heading to your stop.
 - 📍 **Line filtering** - Monitor all or specific lines per stop
 - 🔄 **Configurable refresh** - Set update interval (30-600 seconds)
 
+## Requirements
+
+Home Assistant 2025.2 or newer. The live map additionally needs two free
+[Trafiklab](https://www.trafiklab.se/) keys — see [Live Map](#live-map).
+
 ## Installation
 
 ### HACS (Recommended)
@@ -50,13 +55,29 @@ To modify settings later, click **Configure** on the integration.
 
 ## Sensors
 
+Each stop is a **device**, with its entities grouped under it — rename the
+device and its entities follow.
+
 Per stop:
 
 | Sensor | State |
 | --- | --- |
 | `sensor.<stop>_line_<line>_to_<direction>` | Minutes until that line's next departure |
 | `sensor.<stop>_next_departure` | Minutes until the next bus, whichever line |
-| `sensor.<stop>_last_update` | When the departure board was last fetched |
+| `sensor.<stop>_last_update` | When the departure board was last fetched (diagnostic) |
+| `button.<stop>_refresh` | Pulls the departure board by hand |
+
+One per install:
+
+| Sensor | State |
+| --- | --- |
+| `sensor.ul_transport_api_requests` | Upstream requests made since Home Assistant started |
+
+The request counter is there to watch the Trafiklab quota, so it counts
+calls rather than successes — a 304 or a 429 is spent quota too. Its
+attributes break the total down per feed, with `trafiklab_total` and
+`trafiklab_per_hour` as the numbers the quota actually sees (UL's own
+departure API is separate and unmetered).
 
 The state is a **number of minutes**, floored, so a numeric_state trigger is all
 an automation needs:
@@ -140,6 +161,7 @@ Clicking a bus or an arrival row in the overview switches to that line's view.
 | `destinations` | all | Only show departures going to these, e.g. `["Stockholm city"]` |
 | `line` | – | Pin the card to one line's route view instead of the overview |
 | `content` | `both` | `both`, `map` or `list` |
+| `include_positions` | `true` | Fetch the vehicle positions feed. `false` halves the requests, at the cost of not knowing whether a timetabled departure is already on the road |
 | `layout` | `auto` | `auto`, `stacked` or `wide` |
 | `refresh` | `5` (`20` for a list) | Seconds between polls while the card is visible |
 | `horizon_minutes` | `30` | Arrivals further out than this are listed but not plotted |
@@ -171,10 +193,14 @@ it gets there.
 
 ### A list on the overview, the map behind it
 
-`content: list` drops the map, which halves the upstream requests: the arrival
-list is built from the trip updates alone, so the positions feed is never
-fetched. It also defaults to a 20-second refresh, since nothing on screen moves
-between stops.
+`content: list` drops the map and defaults to a 20-second refresh, since nothing
+on screen moves between stops — four times cheaper than an open map.
+
+It still reads the positions feed. It has nothing to plot with it, but positions
+are the only thing that can tell a departure the feed is silent about ("no live
+data") from one that is out on the road right now, and a list that calls a bus
+you could watch move "not yet running" is wrong in the way people notice. Set
+`include_positions: false` to trade that back for half the requests.
 
 That makes a cheap card for a dashboard overview, with the full map on a
 subview one tap away:
@@ -312,8 +338,10 @@ evidence that it left.
 Trafiklab's free Bronze tier allows 30,000 requests per 30 days. Each refresh
 costs 2 requests (positions + predictions) shared across every viewer, so at the
 default 5-second refresh an open map costs ~24 requests/minute — roughly 20
-hours of map-watching per month. A `content: list` card costs 1 request per
-refresh and defaults to refreshing every 20 seconds, which is 3 requests/minute.
+hours of map-watching per month. A `content: list` card refreshes every 20
+seconds instead, so it costs 6 requests/minute, or 3 with
+`include_positions: false`. `sensor.ul_transport_api_requests` reports what has
+actually been spent.
 Polling stops when the card is removed from the DOM or the browser tab is
 hidden. If you keep the map open on a wall panel, ask Trafiklab for a free quota
 upgrade.
@@ -354,6 +382,29 @@ to do exactly that.
 **Rate limit errors**: Increase the update interval or wait a few minutes between configuration changes
 
 **Missing real-time data**: Not all departures have real-time updates (`estimated_departure_time` will be `null`)
+
+**The map card shows "custom element doesn't exist"**: the card is registered as
+a dashboard resource, which a browser picks up the next time it opens a
+dashboard. A tab left open across the upgrade — a wall panel, usually — needs one
+hard reload. If it still does not appear, check that
+**Settings → Dashboards → Resources** lists `/ul_transport/ul-transport-map.js`.
+
+## Development
+
+```bash
+pip install -r requirements_test.txt
+```
+
+```bash
+pytest
+```
+
+```bash
+ruff check custom_components tests
+```
+
+Every push runs `hassfest`, HACS validation, `ruff` and the test suite — see
+[.github/workflows/validate.yml](.github/workflows/validate.yml).
 
 ## Support
 
