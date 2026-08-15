@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.0.2 - 2026-08-15
+
+Maintenance release. Nothing about the integration's behaviour changed; 2.0.1
+users gain the packaging and repository fixes below.
+
+### Fixed
+
+- `manifest.json` keys are ordered the way `hassfest` requires (domain, name,
+  then alphabetical). 2.0.1 shipped with `after_dependencies` in the wrong
+  place, which failed validation.
+- The integration now asks for `gtfs-realtime-bindings>=2.2.0` rather than
+  `>=1.0.0`. 1.0.0 declares no dependencies at all, so it could be installed
+  without the `protobuf` the live map's realtime feeds need; 2.2.0 declares it
+  and leaves the version unpinned, so nothing else in Home Assistant is
+  disturbed. This is also the version CI tests against.
+
+### Added
+
+- Brand assets under `custom_components/ul_transport/brand/`, so HACS shows an
+  icon rather than falling back to the core-only brands repository.
+- A `LICENSE` file. The README and `pyproject.toml` already said MIT; now the
+  repository does too.
+
+### Changed
+
+- Repository housekeeping with no effect on the installed integration: CI
+  actions pinned to commit SHAs and updated, Dependabot configured to keep
+  them moving, `ruff format` applied and enforced, and the test suite given
+  the `home-assistant-frontend` wheel it needs to run outside a full Home
+  Assistant install.
+
 ## 2.0.1 - 2026-08-15
 
 Hardening release: no new features, and every entity keeps its id, its history

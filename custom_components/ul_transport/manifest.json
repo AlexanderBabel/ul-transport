@@ -10,6 +10,6 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/AlexanderBabel/ul-transport/issues",
   "loggers": ["google.transit"],
-  "requirements": ["gtfs-realtime-bindings>=1.0.0"],
-  "version": "2.0.1"
+  "requirements": ["gtfs-realtime-bindings>=2.2.0"],
+  "version": "2.0.2"
 }
