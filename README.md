@@ -361,11 +361,15 @@ stop configured, a name that matches nothing is treated as a mishearing rather
 than as a different stop.
 
 The result also carries a `card` key holding a live map config for the stop it
-just answered about. Assistants without a screen ignore it. A voice satellite
-with a screen can draw it while the answer is read out - see
-[contrib/README.md](contrib/README.md) for a patch that teaches the
-[Voice Satellite card](https://github.com/jxlarrea/voice-satellite-card-integration)
-to do exactly that.
+just answered about. Assistants without a screen ignore it.
+
+[Voice Satellite](https://github.com/jxlarrea/voice-satellite-card-integration)
+**2026.8.10 or later** draws it: any tool result with a `card` key is mounted in
+its media panel while the answer is spoken, no configuration on either side. It
+resolves `custom:` cards from **Settings → Dashboards → Resources**, which is
+where this integration registers its card already — so nothing extra is needed
+unless your Lovelace runs in YAML mode, where the card has to be listed in
+`resources:` by hand. Size it with the satellite's own **Text Scale** slider.
 
 ## API & Data
 

@@ -11,5 +11,5 @@
   "issue_tracker": "https://github.com/AlexanderBabel/ul-transport/issues",
   "loggers": ["google.transit"],
   "requirements": ["gtfs-realtime-bindings>=2.2.0"],
-  "version": "2.0.2"
+  "version": "2.0.3"
 }

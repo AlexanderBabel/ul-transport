@@ -87,8 +87,6 @@ async def test_card_points_at_the_stop_that_was_answered(hass_with_stop):
         "stop_id": MOCK_STOP_ID,
         "content": "list",
         "list_count": 5,
-        "card_module": "/ul_transport/ul-transport-map.js",
-        "card_scale": 1.25,
     }
 
 

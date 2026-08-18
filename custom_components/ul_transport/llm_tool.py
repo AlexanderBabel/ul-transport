@@ -1,10 +1,11 @@
 """Assist tool answering "when does the next bus leave?".
 
 The answer is spoken from `departures`. `card` is for a voice satellite with a
-screen: the Voice Satellite card draws any Lovelace config a tool result puts
-there, so the map card comes up on the tablet while the LLM reads the times.
-Assistants without a screen ignore it - it costs them a few tokens and nothing
-else.
+screen: the Voice Satellite card (2026.8.10+) draws any Lovelace config a tool
+result puts there, so the map card comes up on the tablet while the LLM reads
+the times. It resolves `custom:` cards from Home Assistant's own dashboard
+resources, which is where `__init__.py` already registers this one. Assistants
+without a screen ignore the key - it costs them a few tokens and nothing else.
 """
 
 from __future__ import annotations
@@ -102,12 +103,6 @@ class NextDeparturesTool(llm.Tool):
             "stop_id": coordinator.stop_id,
             "content": "list",
             "list_count": MAX_DEPARTURES,
-            # A satellite showing this outside a dashboard - on its own panel -
-            # has no Lovelace to have loaded the card, so say where it lives.
-            "card_module": f"/{DOMAIN}/ul-transport-map.js",
-            # Dashboard type sizes are for a screen at arm's length. This is
-            # read from wherever the tablet is on the wall.
-            "card_scale": 1.25,
         }
         if line is not None:
             card["lines"] = [line]

@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.0.3 - 2026-08-18
+
+Voice Satellite 2026.8.10 shipped Lovelace cards from tool results as a
+supported feature, so the local patch this repository carried is gone.
+
+### Changed
+
+- The `card` key in the Assist tool result is now plain Lovelace config. The
+  `card_module` and `card_scale` keys it used to carry were the patch's own
+  extensions and upstream does not read them: it resolves `custom:` cards from
+  the dashboard resource registry — where `__init__.py` already registers this
+  card — and sizes them with the satellite's Text Scale slider.
+
+### Removed
+
+- `contrib/`, which held the patch teaching the Voice Satellite card to draw
+  tool result cards, and the instructions for building and deploying it.
+  Install Voice Satellite 2026.8.10 or later from HACS instead.
+
 ## 2.0.2 - 2026-08-15
 
 Maintenance release. Nothing about the integration's behaviour changed; 2.0.1
