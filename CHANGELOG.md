@@ -1,5 +1,54 @@
 # Changelog
 
+## 2.1.0 - 2026-08-25
+
+Quota work, and the direction names the map shows. The Trafiklab free tier
+allows 30,000 realtime requests per 30 days and 60 static downloads, and nothing
+in the integration could tell you where you stood against either.
+
+### Added
+
+- `sensor.trafiklab_api_realtime_requests_30_days` and
+  `sensor.trafiklab_api_static_requests_30_days`, on their own **Trafiklab API**
+  device because the key is account-wide. Each reports what its quota has seen
+  over the same trailing 30 days the quota is measured over, with `limit`,
+  `remaining` and `percent_used` alongside the per-feed breakdown. Counts are
+  persisted, so a restart no longer resets them.
+- A hard stop before Trafiklab's: once the 30-day realtime count reaches 30,000
+  the integration serves the data it already has instead of collecting 429s.
+
+### Changed
+
+- A `content: list` card now refreshes every 90 seconds instead of 20, and skips
+  the vehicle positions feed by default. That is one request per refresh rather
+  than three per 20 seconds - the difference between a list left up on a wall
+  panel fitting inside the quota and spending it in four days. Set
+  `include_positions: true` to get the "already on the road" marker back.
+- Arrival countdowns are worked out in the browser from the departure time, so
+  they tick down by the second between polls rather than sitting still and
+  jumping. This is what makes the slower list refresh readable.
+- The card editor's refresh slider now reaches 300 seconds.
+
+### Fixed
+
+- Direction names fell back to their GTFS terminus - "Uppsala
+  Naturstensvägen" where the UL app says "Flogsta Stenhagen" - for two separate
+  reasons. The learned-name cache and the coordinator lookup were keyed by stop,
+  so a stop advertising only one of a line's two names could pair neither; they
+  are now pooled across every configured stop, and another stop on the same line
+  supplies the missing half. Separately, the first and last runs of a line carry
+  a compound name ("Centralstationen Gamla Uppsala" for the morning trip that
+  starts downtown), which left three names for two directions and named neither;
+  the variants are now folded onto the destination they share.
+
+### Removed
+
+- `sensor.ul_transport_api_requests`, which counted only since the last restart
+  and so could not answer the one question worth asking. It is removed from the
+  entity registry automatically on upgrade; the two quota sensors replace it.
+  Any automation or template referencing it needs repointing at
+  `sensor.trafiklab_api_realtime_requests_30_days`.
+
 ## 2.0.3 - 2026-08-18
 
 Voice Satellite 2026.8.10 shipped Lovelace cards from tool results as a
