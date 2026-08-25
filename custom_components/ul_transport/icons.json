@@ -1,0 +1,20 @@
+{
+  "entity": {
+    "button": {
+      "refresh": {
+        "default": "mdi:refresh"
+      }
+    },
+    "sensor": {
+      "last_update": {
+        "default": "mdi:clock-check-outline"
+      },
+      "realtime_quota": {
+        "default": "mdi:api"
+      },
+      "static_quota": {
+        "default": "mdi:api"
+      }
+    }
+  }
+}

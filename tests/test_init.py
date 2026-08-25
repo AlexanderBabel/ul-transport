@@ -92,7 +92,7 @@ async def test_every_entity_lands_on_that_device(hass, entry):
     assert f"{MOCK_STOP_ID}_refresh" in unique_ids
     assert f"{MOCK_STOP_ID}_next_departure" in unique_ids
     assert f"{MOCK_STOP_ID}_last_update" in unique_ids
-    assert f"{MOCK_STOP_ID}_2_Uppsala Central_in" in unique_ids
+    assert f"{MOCK_STOP_ID}_3_Nyby_in" in unique_ids
 
     # The account-wide quota meters belong to the API key, not to any one stop.
     for entity in entities:
@@ -116,7 +116,7 @@ async def test_the_stop_name_prefixes_the_entity_names(hass, entry):
     assert "Trafiklab API Realtime requests (30 days)" in names
     assert hass.states.get("sensor.trafiklab_api_realtime_requests_30_days")
     assert hass.states.get("sensor.trafiklab_api_static_requests_30_days")
-    assert f"{MOCK_STOP_NAME} Line 2 to Uppsala Central" in names
+    assert f"{MOCK_STOP_NAME} Line 3 to Nyby" in names
     assert f"{MOCK_STOP_NAME} Refresh" in names
 
 
@@ -126,7 +126,7 @@ async def test_an_options_change_reloads_exactly_once(hass, entry):
 
     with patch.object(hass.config_entries, "async_reload", AsyncMock()) as reload:
         hass.config_entries.async_update_entry(
-            entry, options={CONF_SELECTED_LINES: ["2_Uppsala Central"]}
+            entry, options={CONF_SELECTED_LINES: ["3_Nyby"]}
         )
         await hass.async_block_till_done()
 

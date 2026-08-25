@@ -617,7 +617,7 @@ class TestOverview:
 
 
 class TestDirectionNames:
-    """UL names directions by place ("Norby Gottsunda"), GTFS by last stop."""
+    """UL names directions by district, GTFS by the route's last stop."""
 
     # T_INBOUND (dir 0) ends at Uppsala Centralstation.
     # T_REVERSE (dir 1) ends at Granbystaden.
@@ -699,12 +699,13 @@ class TestDirectionNames:
         assert names[("2", "0")] == "Gamla Uppsala"
 
     def test_folds_variants_onto_the_shortest_phrasing(self):
-        assert _canonical_names(
-            {"Gamla Uppsala", "Centralstationen Gamla Uppsala", "Håga"}, 2
-        ) == {"Gamla Uppsala", "Håga"}
+        assert _canonical_names({"Nyby", "Centralstationen Nyby", "Stenhagen"}, 2) == {
+            "Nyby",
+            "Stenhagen",
+        }
 
     def test_keeps_two_real_destinations_that_share_a_last_word(self):
-        both = {"Norra Årsta", "Södra Årsta"}
+        both = {"Norra Kvarngärdet", "Södra Kvarngärdet"}
         assert _canonical_names(both, 2) == both
 
 
@@ -712,8 +713,8 @@ class TestPooledDirections:
     """UL's towards names belong to the line, not to where you are standing."""
 
     def test_pools_every_stop(self, monkeypatch):
-        # Line 2 at Uppsala Centralstation only ever advertises one of its two
-        # names, so on its own it can pair neither. Another stop has the rest.
+        # A terminus only ever advertises the one direction you can board
+        # there, so on its own it can pair neither. Another stop has the rest.
         from types import SimpleNamespace
 
         from custom_components.ul_transport import live
@@ -722,22 +723,22 @@ class TestPooledDirections:
             live,
             "async_coordinators",
             lambda hass: [
-                SimpleNamespace(board_keys=["2_Gamla Uppsala"]),
-                SimpleNamespace(board_keys=["2_Håga", "7_Norby Gottsunda"]),
+                SimpleNamespace(board_keys=["3_Nyby"]),
+                SimpleNamespace(board_keys=["3_Sävja", "5_Stenhagen"]),
             ],
         )
         assert _coordinator_directions(None) == [
-            ("2", "Gamla Uppsala"),
-            ("2", "Håga"),
-            ("7", "Norby Gottsunda"),
+            ("3", "Nyby"),
+            ("3", "Sävja"),
+            ("5", "Stenhagen"),
         ]
 
 
 class TestULDirections:
     def test_extracts_distinct_line_and_towards(self):
         assert ul_directions(
-            {"2_Gamla Uppsala": [{}, {}], "2_Håga": [{}], "7_Norby Gottsunda": [{}]}
-        ) == [("2", "Gamla Uppsala"), ("2", "Håga"), ("7", "Norby Gottsunda")]
+            {"3_Nyby": [{}, {}], "3_Sävja": [{}], "5_Stenhagen": [{}]}
+        ) == [("3", "Nyby"), ("3", "Sävja"), ("5", "Stenhagen")]
 
     def test_tolerates_empty_and_malformed(self):
         assert ul_directions(None) == []
@@ -806,7 +807,7 @@ class TestLineView:
         assert len(result["shape"]) == 3
 
     def test_falls_back_to_the_timetable_when_nothing_is_predicting(self, timetabled):
-        """Line 7 towards Årsta Fyrislund: three buses running, no trip updates.
+        """Some directions run buses that report positions and nothing else.
 
         A dash for the departure time of a bus you can watch move across the
         map is the least useful thing the row could say.

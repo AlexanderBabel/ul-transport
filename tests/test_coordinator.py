@@ -20,6 +20,7 @@ from .conftest import (
 def _make_coordinator(hass, selected_lines=None, scan_interval=60):
     return ULTransportDataUpdateCoordinator(
         hass,
+        None,
         MOCK_STOP_ID,
         MOCK_STOP_NAME,
         selected_lines or [],
@@ -34,12 +35,10 @@ def coordinator(hass):
 
 class TestCoordinatorInit:
     def test_stores_stop_info(self, hass):
-        coord = _make_coordinator(
-            hass, selected_lines=["2_Uppsala Central"], scan_interval=120
-        )
+        coord = _make_coordinator(hass, selected_lines=["3_Nyby"], scan_interval=120)
         assert coord.stop_id == MOCK_STOP_ID
         assert coord.stop_name == MOCK_STOP_NAME
-        assert coord.selected_lines == ["2_Uppsala Central"]
+        assert coord.selected_lines == ["3_Nyby"]
 
 
 class TestCoordinatorFetch:
@@ -50,10 +49,10 @@ class TestCoordinatorFetch:
         ):
             data = await coordinator._async_update_data()
 
-        assert "2_Uppsala Central" in data
-        assert "8_Gottsunda" in data
-        assert len(data["2_Uppsala Central"]) == 2
-        assert len(data["8_Gottsunda"]) == 1
+        assert "3_Nyby" in data
+        assert "5_Stenhagen" in data
+        assert len(data["3_Nyby"]) == 2
+        assert len(data["5_Stenhagen"]) == 1
 
     async def test_sets_last_successful_update_on_success(self, coordinator):
         with patch(
@@ -79,15 +78,15 @@ class TestCoordinatorFetch:
         assert coordinator.last_successful_update is None
 
     async def test_filters_by_selected_lines(self, hass):
-        coord = _make_coordinator(hass, selected_lines=["2_Uppsala Central"])
+        coord = _make_coordinator(hass, selected_lines=["3_Nyby"])
         with patch(
             "custom_components.ul_transport.coordinator.async_get_clientsession",
             return_value=build_session(200, MOCK_DEPARTURES_RESPONSE),
         ):
             data = await coord._async_update_data()
 
-        assert "2_Uppsala Central" in data
-        assert "8_Gottsunda" not in data
+        assert "3_Nyby" in data
+        assert "5_Stenhagen" not in data
 
     async def test_raises_on_rate_limit(self, coordinator):
         with (
@@ -127,9 +126,9 @@ class TestCoordinatorFetch:
             "departures": [
                 {
                     "line": {
-                        "name": "2",
-                        "towards": "Uppsala Central",
-                        "lineNo": 2,
+                        "name": "3",
+                        "towards": "Nyby",
+                        "lineNo": 3,
                         "trafficType": 1,
                     },
                     "departureDateTime": f"2026-04-12T12:0{i}:00",
@@ -147,16 +146,16 @@ class TestCoordinatorFetch:
         ):
             data = await coord._async_update_data()
 
-        assert len(data["2_Uppsala Central"]) == 5
+        assert len(data["3_Nyby"]) == 5
 
     async def test_sorts_departures_by_realtime_then_planned(self, hass):
         unsorted_deps = {
             "departures": [
                 {
                     "line": {
-                        "name": "2",
+                        "name": "3",
                         "towards": "Dest",
-                        "lineNo": 2,
+                        "lineNo": 3,
                         "trafficType": 1,
                     },
                     "departureDateTime": "2026-04-12T12:05:00",
@@ -166,9 +165,9 @@ class TestCoordinatorFetch:
                 },
                 {
                     "line": {
-                        "name": "2",
+                        "name": "3",
                         "towards": "Dest",
-                        "lineNo": 2,
+                        "lineNo": 3,
                         "trafficType": 1,
                     },
                     "departureDateTime": "2026-04-12T12:01:00",
@@ -185,7 +184,7 @@ class TestCoordinatorFetch:
         ):
             data = await coord._async_update_data()
 
-        deps = data["2_Dest"]
+        deps = data["3_Dest"]
         first_time = (
             deps[0].get("realTimeDepartureDateTime") or deps[0]["departureDateTime"]
         )

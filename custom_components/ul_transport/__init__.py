@@ -201,7 +201,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ULTransportConfigEntry) 
     )
 
     coordinator = ULTransportDataUpdateCoordinator(
-        hass, stop_id, stop_name, selected_lines, scan_interval
+        hass, entry, stop_id, stop_name, selected_lines, scan_interval
     )
     await coordinator.async_config_entry_first_refresh()
 

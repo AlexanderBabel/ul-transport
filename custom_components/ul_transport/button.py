@@ -9,6 +9,9 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import ULTransportConfigEntry, ULTransportDataUpdateCoordinator
 
+# The coordinator owns the polling; the entities only read what it already has.
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -25,7 +28,6 @@ class ULTransportRefreshButton(
     """Button to manually trigger a data refresh."""
 
     _attr_has_entity_name = True
-    _attr_icon = "mdi:refresh"
     _attr_translation_key = "refresh"
 
     def __init__(self, coordinator: ULTransportDataUpdateCoordinator) -> None:

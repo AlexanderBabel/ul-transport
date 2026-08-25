@@ -31,6 +31,9 @@ from .quota import QUOTA_DAYS, QUOTA_REALTIME, QUOTA_STATIC, request_quota
 
 _LOGGER = logging.getLogger(__name__)
 
+# The coordinator owns the polling; the entities only read what it already has.
+PARALLEL_UPDATES = 0
+
 # Suffixes this integration currently creates. Anything else on the entry is a
 # leftover from the departures-card sensors, which no longer exist.
 CURRENT_SUFFIXES = (
@@ -247,7 +250,6 @@ class ULTransportLastUpdateSensor(
     _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_icon = "mdi:clock-check-outline"
     _attr_translation_key = "last_update"
 
     def __init__(self, coordinator: ULTransportDataUpdateCoordinator) -> None:
@@ -282,7 +284,6 @@ class ULQuotaSensor(SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = "requests"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_icon = "mdi:api"
 
     def __init__(self, hass: HomeAssistant, kind: str, limit: int) -> None:
         """Watch one quota. ``kind`` names the method on RequestQuota."""

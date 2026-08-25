@@ -225,8 +225,8 @@ class GTFSIndex:
     def seq_near(self, trip_id: str, lat: float, lon: float) -> int | None:
         """Sequence of the call this vehicle is closest to.
 
-        For the trips the realtime feed sends no predictions for - all of line
-        7 towards Årsta Fyrislund, and a third of the buses on the road at any
+        For the trips the realtime feed sends no predictions for - whole
+        directions on some lines, and a third of the buses on the road at any
         moment - the reported position is the only evidence of how far along
         the route they have got. Good to a stop either way: a bus between two
         calls is nearest whichever it is nearer.

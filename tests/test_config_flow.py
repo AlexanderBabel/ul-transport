@@ -30,7 +30,7 @@ SEARCH_HIT = [
     # An address, which has no departure board - the flow must drop it.
     {"id": 999, "name": "Kungsgatan 1", "type": 1},
 ]
-BOARD = (MOCK_STOP_NAME, ["2_Uppsala Central", "8_Gottsunda"])
+BOARD = (MOCK_STOP_NAME, ["3_Nyby", "5_Stenhagen"])
 
 
 def _patch(search=SEARCH_HIT, board=BOARD):
@@ -78,7 +78,7 @@ class TestConfigFlow:
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_SELECTED_LINES: ["2_Uppsala Central"], CONF_SCAN_INTERVAL: 120},
+            {CONF_SELECTED_LINES: ["3_Nyby"], CONF_SCAN_INTERVAL: 120},
         )
 
         assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -86,7 +86,7 @@ class TestConfigFlow:
         assert result["data"] == {
             CONF_STOP_ID: MOCK_STOP_ID,
             CONF_STOP_NAME: MOCK_STOP_NAME,
-            CONF_SELECTED_LINES: ["2_Uppsala Central"],
+            CONF_SELECTED_LINES: ["3_Nyby"],
             CONF_SCAN_INTERVAL: 120,
         }
 
@@ -212,7 +212,7 @@ class TestOptionsFlow:
             result = await hass.config_entries.options.async_configure(
                 result["flow_id"],
                 {
-                    CONF_SELECTED_LINES: ["8_Gottsunda"],
+                    CONF_SELECTED_LINES: ["5_Stenhagen"],
                     CONF_SCAN_INTERVAL: 300,
                     CONF_GTFS_STATIC_KEY: "s",
                     CONF_GTFS_REALTIME_KEY: "r",
@@ -220,7 +220,7 @@ class TestOptionsFlow:
             )
 
         assert result["data"] == {
-            CONF_SELECTED_LINES: ["8_Gottsunda"],
+            CONF_SELECTED_LINES: ["5_Stenhagen"],
             CONF_SCAN_INTERVAL: 300,
             CONF_GTFS_STATIC_KEY: "s",
             CONF_GTFS_REALTIME_KEY: "r",

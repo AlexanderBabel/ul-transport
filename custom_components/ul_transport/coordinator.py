@@ -34,6 +34,7 @@ class ULTransportDataUpdateCoordinator(
     def __init__(
         self,
         hass: HomeAssistant,
+        config_entry: ULTransportConfigEntry | None,
         stop_id: int,
         stop_name: str,
         selected_lines: list[str],
@@ -52,6 +53,10 @@ class ULTransportDataUpdateCoordinator(
         super().__init__(
             hass,
             _LOGGER,
+            # Passed explicitly rather than left to the context variable the
+            # base class falls back on, which only holds the entry while setup
+            # is running.
+            config_entry=config_entry,
             name=f"{DOMAIN}_{stop_id}",
             update_interval=timedelta(seconds=scan_interval),
         )

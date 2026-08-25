@@ -437,9 +437,9 @@ def direction_names(
 ) -> dict[tuple[str, str], str]:
     """Map (line, direction_id) -> UL's own name for that direction.
 
-    GTFS termini are physical last stops ("Uppsala Jenny Linds väg"); UL
-    markets the same direction as "Norby Gottsunda", which is what the
-    departure board and the app show.
+    GTFS names a direction after the physical last stop of the route; UL
+    markets the same direction by the districts it serves, and that is what the
+    departure board and the app show. The two are rarely the same string.
 
     Matching on arrival time looks obvious and is wrong: UL lists the same
     direction twice in one response, and opposite directions pass a mid-route
@@ -526,9 +526,9 @@ def overview(
     now = time.time() if now is None else now
     keep_kind = _kind_filter(kinds)
     wanted_lines = {str(line) for line in lines} if lines else None
-    # Where it goes, not which number is on the front: at a station "line 7 but
-    # only towards Årsta Fyrislund" and "trains, but not the ones to Gävle" are
-    # the useful cuts, and neither is expressible as a set of line numbers.
+    # Where it goes, not which number is on the front: at a station "only the
+    # half of this line heading out of town" and "trains, but not the ones to
+    # Gävle" are the useful cuts, and neither is a set of line numbers.
     wanted_destinations = set(destinations) if destinations else None
     directions = directions or []
     horizon = now + horizon_minutes * 60
@@ -727,10 +727,11 @@ def line_view(
                 }
             )
         elif my_seq is not None and vehicle_trip in timetabled:
-            # A bus you can watch move, with nothing predicting for it - all of
-            # line 7 towards Årsta Fyrislund. It called at your stop at some
-            # point today, so the timetable answers when, and the position
-            # answers how far off it is; a dash answers neither.
+            # A bus you can watch move, with nothing predicting for it - some
+            # directions publish positions and no arrival predictions at all.
+            # It called at your stop at some point today, so the timetable
+            # answers when and the position answers how far off it is; a dash
+            # answers neither.
             eta = timetabled[vehicle_trip]
             payload.update(
                 {
@@ -789,10 +790,10 @@ def _stop_payload(
 ) -> list[dict[str, Any]]:
     """Stop markers, with the configured stop collapsed to a single point.
 
-    A stop's platforms are separate GTFS entries - Sommarro's sit ~170 m apart
-    on opposite sides of the road - so drawing each as "my stop" stacks several
-    highlighted markers into one blob. The parent station is the thing the user
-    thinks of as their stop.
+    A stop's platforms are separate GTFS entries, and a pair on opposite sides
+    of the road can sit ~170 m apart, so drawing each as "my stop" stacks
+    several highlighted markers into one blob. The parent station is the thing
+    the user thinks of as their stop.
     """
     mine = index.platforms.get(area_id, set())
     out = []
@@ -866,16 +867,14 @@ def _coordinator_directions(hass: HomeAssistant) -> list[tuple]:
     """UL's own direction names, from every stop's sensor coordinator.
 
     Read from the unfiltered board rather than from ``data``: the sensors keep
-    only the lines you picked, and a line missing from here falls back to its
-    GTFS terminus - "Uppsala Naturstensvägen" where the app says "Flogsta
-    Stenhagen".
+    only the lines you picked, and a line missing from here falls back to the
+    GTFS terminus, which is not the name the app shows.
 
     Pooled across stops rather than read from the one being drawn. A direction
-    is a property of the line, not of where you stand, and a stop that only
-    ever advertises one of a line's two names can never pair either: line 2 at
-    Uppsala Centralstation lists "Gamla Uppsala" and nothing else, so both its
-    directions fell back to their termini. Another stop on the same line
-    supplies the missing half.
+    is a property of the line, not of where you stand, and a terminus only ever
+    advertises the one direction you can board there - so on its own it can
+    pair neither of the line's two names, and both fall back. Another stop on
+    the same line supplies the missing half.
     """
     pairs: set[tuple] = set()
     for coordinator in async_coordinators(hass):

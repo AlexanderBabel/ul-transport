@@ -22,9 +22,9 @@ MOCK_DEPARTURES_RESPONSE = {
     "departures": [
         {
             "line": {
-                "name": "2",
-                "towards": "Uppsala Central",
-                "lineNo": 2,
+                "name": "3",
+                "towards": "Nyby",
+                "lineNo": 3,
                 "trafficType": 1,
             },
             "departureDateTime": "2026-04-12T12:00:00",
@@ -34,9 +34,9 @@ MOCK_DEPARTURES_RESPONSE = {
         },
         {
             "line": {
-                "name": "2",
-                "towards": "Uppsala Central",
-                "lineNo": 2,
+                "name": "3",
+                "towards": "Nyby",
+                "lineNo": 3,
                 "trafficType": 1,
             },
             "departureDateTime": "2026-04-12T12:10:00",
@@ -46,9 +46,9 @@ MOCK_DEPARTURES_RESPONSE = {
         },
         {
             "line": {
-                "name": "8",
-                "towards": "Gottsunda",
-                "lineNo": 8,
+                "name": "5",
+                "towards": "Stenhagen",
+                "lineNo": 5,
                 "trafficType": 1,
             },
             "departureDateTime": "2026-04-12T12:05:00",

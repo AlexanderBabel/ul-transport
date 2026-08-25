@@ -22,7 +22,7 @@ def _stamp(minutes: float) -> str:
 
 
 def _departure(
-    planned: float, estimated: float | None = None, line="2", towards="Uppsala Central"
+    planned: float, estimated: float | None = None, line="3", towards="Nyby"
 ) -> dict:
     return {
         "line": {
@@ -47,11 +47,11 @@ class _ToolInput:
 def stop(hass):
     """One set-up stop, reachable the way the integration leaves it."""
     coordinator = ULTransportDataUpdateCoordinator(
-        hass, MOCK_STOP_ID, MOCK_STOP_NAME, [], 60
+        hass, None, MOCK_STOP_ID, MOCK_STOP_NAME, [], 60
     )
     coordinator.data = {
-        "2_Uppsala Central": [_departure(4.05, 6.05), _departure(20.05)],
-        "8_Gottsunda": [_departure(2.05, 2.05, line="8", towards="Gottsunda")],
+        "3_Nyby": [_departure(4.05, 6.05), _departure(20.05)],
+        "5_Stenhagen": [_departure(2.05, 2.05, line="5", towards="Stenhagen")],
     }
     add_stop(hass, coordinator)
     return coordinator
@@ -70,7 +70,7 @@ async def test_answers_with_the_soonest_bus_first(hass_with_stop):
     result = await _call(hass_with_stop)
 
     assert result["stop"] == MOCK_STOP_NAME
-    assert [d["line"] for d in result["departures"]] == ["8", "2", "2"]
+    assert [d["line"] for d in result["departures"]] == ["5", "3", "3"]
     assert result["departures"][0]["in_minutes"] == 2
     # Six minutes out, two of them late.
     assert result["departures"][1]["in_minutes"] == 6
@@ -91,10 +91,10 @@ async def test_card_points_at_the_stop_that_was_answered(hass_with_stop):
 
 
 async def test_line_filters_both_the_answer_and_the_card(hass_with_stop):
-    result = await _call(hass_with_stop, line="2")
+    result = await _call(hass_with_stop, line="3")
 
-    assert {d["line"] for d in result["departures"]} == {"2"}
-    assert result["card"]["lines"] == ["2"]
+    assert {d["line"] for d in result["departures"]} == {"3"}
+    assert result["card"]["lines"] == ["3"]
 
 
 async def test_a_misheard_stop_name_still_answers_the_only_stop(hass_with_stop):
@@ -104,7 +104,7 @@ async def test_a_misheard_stop_name_still_answers_the_only_stop(hass_with_stop):
 
 
 async def test_an_unknown_stop_lists_the_configured_ones(hass, hass_with_stop):
-    other = ULTransportDataUpdateCoordinator(hass, 1, "Vaksala torg", [], 60)
+    other = ULTransportDataUpdateCoordinator(hass, None, 1, "Vaksala torg", [], 60)
     other.data = {}
     add_stop(hass, other, stop_id=1)
 

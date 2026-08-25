@@ -31,8 +31,8 @@ from custom_components.ul_transport.sensor import (
 
 from .conftest import MOCK_STOP_ID, MOCK_STOP_NAME
 
-LINE_2 = "2_Uppsala Central"
-LINE_8 = "8_Gottsunda"
+LINE_3 = "3_Nyby"
+LINE_5 = "5_Stenhagen"
 
 
 def _stamp(minutes: float) -> str:
@@ -42,7 +42,7 @@ def _stamp(minutes: float) -> str:
 
 
 def _departure(
-    planned: float, estimated: float | None = None, line="2", towards="Uppsala Central"
+    planned: float, estimated: float | None = None, line="3", towards="Nyby"
 ) -> dict:
     return {
         "line": {
@@ -60,11 +60,13 @@ def _departure(
 
 @pytest.fixture
 def coordinator(hass):
-    coord = ULTransportDataUpdateCoordinator(hass, MOCK_STOP_ID, MOCK_STOP_NAME, [], 60)
+    coord = ULTransportDataUpdateCoordinator(
+        hass, None, MOCK_STOP_ID, MOCK_STOP_NAME, [], 60
+    )
     coord.data = {
         # Six minutes out and running two minutes late.
-        LINE_2: [_departure(4.05, 6.05), _departure(20.05)],
-        LINE_8: [_departure(2.05, 2.05, line="8", towards="Gottsunda")],
+        LINE_3: [_departure(4.05, 6.05), _departure(20.05)],
+        LINE_5: [_departure(2.05, 2.05, line="5", towards="Stenhagen")],
     }
     coord.last_update_success = True
     coord.last_successful_update = datetime.now(UTC)
@@ -73,36 +75,36 @@ def coordinator(hass):
 
 class TestLineSensor:
     def test_name_and_unique_id(self, coordinator):
-        sensor = ULLineDepartureSensor(coordinator, LINE_2)
+        sensor = ULLineDepartureSensor(coordinator, LINE_3)
         # has_entity_name: the stop is the device, so the entity carries only
         # the part after it. Home Assistant composes the friendly name.
         assert sensor.has_entity_name is True
-        assert sensor.name == "Line 2 to Uppsala Central"
-        assert sensor.unique_id == f"{MOCK_STOP_ID}_{LINE_2}_in"
+        assert sensor.name == "Line 3 to Nyby"
+        assert sensor.unique_id == f"{MOCK_STOP_ID}_{LINE_3}_in"
 
     def test_state_is_minutes_until_the_next_bus(self, coordinator):
-        sensor = ULLineDepartureSensor(coordinator, LINE_2)
+        sensor = ULLineDepartureSensor(coordinator, LINE_3)
         assert sensor.native_value == 6
 
     def test_minutes_are_floored_not_rounded(self, coordinator):
         """'In 2 minutes' has to stop being true before the bus goes."""
-        coordinator.data[LINE_2] = [_departure(2.9, 2.9)]
-        assert ULLineDepartureSensor(coordinator, LINE_2).native_value == 2
+        coordinator.data[LINE_3] = [_departure(2.9, 2.9)]
+        assert ULLineDepartureSensor(coordinator, LINE_3).native_value == 2
 
     def test_a_bus_at_the_kerb_reads_zero_not_negative(self, coordinator):
-        coordinator.data[LINE_2] = [_departure(-3, -3)]
-        assert ULLineDepartureSensor(coordinator, LINE_2).native_value == 0
+        coordinator.data[LINE_3] = [_departure(-3, -3)]
+        assert ULLineDepartureSensor(coordinator, LINE_3).native_value == 0
 
     def test_falls_back_to_the_timetable_without_realtime(self, coordinator):
-        coordinator.data[LINE_2] = [_departure(9.05)]
-        sensor = ULLineDepartureSensor(coordinator, LINE_2)
+        coordinator.data[LINE_3] = [_departure(9.05)]
+        sensor = ULLineDepartureSensor(coordinator, LINE_3)
         assert sensor.native_value == 9
         assert sensor.extra_state_attributes["is_realtime"] is False
         assert sensor.extra_state_attributes["delay_minutes"] is None
 
     def test_none_when_nothing_is_running(self, coordinator):
-        coordinator.data[LINE_2] = []
-        sensor = ULLineDepartureSensor(coordinator, LINE_2)
+        coordinator.data[LINE_3] = []
+        sensor = ULLineDepartureSensor(coordinator, LINE_3)
         assert sensor.native_value is None
         assert sensor.extra_state_attributes == {}
         assert sensor.available is False
@@ -110,9 +112,9 @@ class TestLineSensor:
 
 class TestAttributes:
     def test_the_bits_an_automation_needs(self, coordinator):
-        attrs = ULLineDepartureSensor(coordinator, LINE_2).extra_state_attributes
-        assert attrs["line"] == "2"
-        assert attrs["direction"] == "Uppsala Central"
+        attrs = ULLineDepartureSensor(coordinator, LINE_3).extra_state_attributes
+        assert attrs["line"] == "3"
+        assert attrs["direction"] == "Nyby"
         assert attrs["transport"] == "BUS"
         assert attrs["stop_name"] == MOCK_STOP_NAME
         assert attrs["is_realtime"] is True
@@ -120,12 +122,12 @@ class TestAttributes:
         assert attrs["departure"] > attrs["scheduled_departure"]
 
     def test_the_ones_after_it(self, coordinator):
-        attrs = ULLineDepartureSensor(coordinator, LINE_2).extra_state_attributes
+        attrs = ULLineDepartureSensor(coordinator, LINE_3).extra_state_attributes
         assert attrs["next_departures_in"] == [20]
         assert len(attrs["next_departures"]) == 1
 
     def test_icon_follows_the_traffic_type(self, coordinator):
-        assert ULLineDepartureSensor(coordinator, LINE_2).icon == "mdi:bus"
+        assert ULLineDepartureSensor(coordinator, LINE_3).icon == "mdi:bus"
 
 
 class TestNextDepartureSensor:
@@ -134,7 +136,7 @@ class TestNextDepartureSensor:
     def test_picks_the_earliest_across_lines(self, coordinator):
         sensor = ULNextDepartureSensor(coordinator)
         assert sensor.native_value == 2
-        assert sensor.extra_state_attributes["line"] == "8"
+        assert sensor.extra_state_attributes["line"] == "5"
 
     def test_unique_id_and_name(self, coordinator):
         sensor = ULNextDepartureSensor(coordinator)
@@ -151,10 +153,6 @@ class TestLastUpdateSensor:
         sensor = ULTransportLastUpdateSensor(coordinator)
         assert sensor.translation_key == "last_update"
         assert sensor.unique_id == f"{MOCK_STOP_ID}_last_update"
-
-    def test_icon(self, coordinator):
-        sensor = ULTransportLastUpdateSensor(coordinator)
-        assert sensor.icon == "mdi:clock-check-outline"
 
     def test_native_value_none_before_first_fetch(self, coordinator):
         coordinator.last_successful_update = None
@@ -220,7 +218,7 @@ class TestDeviceAndTranslations:
 
     def test_every_entity_is_on_the_stop_device(self, coordinator):
         for sensor in (
-            ULLineDepartureSensor(coordinator, LINE_2),
+            ULLineDepartureSensor(coordinator, LINE_3),
             ULNextDepartureSensor(coordinator),
             ULTransportLastUpdateSensor(coordinator),
         ):

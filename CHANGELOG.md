@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.2.0 - 2026-08-25
+
+Housekeeping against Home Assistant's integration quality scale, a proper
+documentation set, and the logo redrawn from UL's own vector artwork.
+
+### Added
+
+- A **diagnostics** download on the integration's menu. It reports what UL
+  advertises against what you selected - the usual reason a sensor is missing -
+  alongside the GTFS index and quota state. The Trafiklab keys are redacted.
+- Entity icons now come from `icons.json` (icon translations) rather than being
+  set in code, so they can be overridden the way any core integration's can.
+- [`docs/live-map.md`](docs/live-map.md): every card option, the quota
+  arithmetic and the known limitations, in one reference.
+- Screenshots of the card in the README.
+
+### Changed
+
+- The logo is UL's round profile mark, rendered from the official vector at
+  Pantone 116 C (`#FFD300`). The previous bitmap carried a yellow gradient.
+- The coordinator is handed its config entry explicitly instead of relying on
+  the context variable the base class falls back on.
+- Both platforms declare `PARALLEL_UPDATES = 0`: the coordinator owns the
+  polling and the entities only read what it already has.
+
 ## 2.1.0 - 2026-08-25
 
 Quota work, and the direction names the map shows. The Trafiklab free tier
@@ -31,14 +56,13 @@ in the integration could tell you where you stood against either.
 
 ### Fixed
 
-- Direction names fell back to their GTFS terminus - "Uppsala
-  Naturstensvägen" where the UL app says "Flogsta Stenhagen" - for two separate
-  reasons. The learned-name cache and the coordinator lookup were keyed by stop,
+- Direction names fell back to their GTFS terminus - the route's last physical
+  stop, rather than the districts the UL app names - for two separate reasons. The learned-name cache and the coordinator lookup were keyed by stop,
   so a stop advertising only one of a line's two names could pair neither; they
   are now pooled across every configured stop, and another stop on the same line
   supplies the missing half. Separately, the first and last runs of a line carry
-  a compound name ("Centralstationen Gamla Uppsala" for the morning trip that
-  starts downtown), which left three names for two directions and named neither;
+  a compound name (the downtown origin prepended to the destination, on the
+  morning trip that starts there), leaving three names for two directions;
   the variants are now folded onto the destination they share.
 
 ### Removed
