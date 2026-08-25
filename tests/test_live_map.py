@@ -17,6 +17,8 @@ from custom_components.ul_transport.gtfs import (
     ul_stop_to_gtfs_area,
 )
 from custom_components.ul_transport.live import (
+    _canonical_names,
+    _coordinator_directions,
     _predictions,
     _stops_away,
     direction_names,
@@ -674,6 +676,56 @@ class TestDirectionNames:
     def test_opposite_directions_never_share_a_name(self, index):
         names = direction_names(index, [("2", "Centralstation"), ("2", "Granbystaden")])
         assert names[("2", "0")] != names[("2", "1")]
+
+    def test_via_prefixed_variant_does_not_block_elimination(self, index):
+        # The first run of the day starts downtown, so UL calls it
+        # "Centralstationen Gamla Uppsala" while every later run that day is
+        # plain "Gamla Uppsala". Cached side by side that is three names for
+        # two directions, and dir 0 used to fall back to its GTFS terminus.
+        names = direction_names(
+            index,
+            [
+                ("2", "Granbystaden"),
+                ("2", "Gamla Uppsala"),
+                ("2", "Nyby Gamla Uppsala"),
+            ],
+        )
+        assert names[("2", "1")] == "Granbystaden"
+        assert names[("2", "0")] == "Gamla Uppsala"
+
+    def test_folds_variants_onto_the_shortest_phrasing(self):
+        assert _canonical_names(
+            {"Gamla Uppsala", "Centralstationen Gamla Uppsala", "Håga"}, 2
+        ) == {"Gamla Uppsala", "Håga"}
+
+    def test_keeps_two_real_destinations_that_share_a_last_word(self):
+        both = {"Norra Årsta", "Södra Årsta"}
+        assert _canonical_names(both, 2) == both
+
+
+class TestPooledDirections:
+    """UL's towards names belong to the line, not to where you are standing."""
+
+    def test_pools_every_stop(self, monkeypatch):
+        # Line 2 at Uppsala Centralstation only ever advertises one of its two
+        # names, so on its own it can pair neither. Another stop has the rest.
+        from types import SimpleNamespace
+
+        from custom_components.ul_transport import live
+
+        monkeypatch.setattr(
+            live,
+            "async_coordinators",
+            lambda hass: [
+                SimpleNamespace(board_keys=["2_Gamla Uppsala"]),
+                SimpleNamespace(board_keys=["2_Håga", "7_Norby Gottsunda"]),
+            ],
+        )
+        assert _coordinator_directions(None) == [
+            ("2", "Gamla Uppsala"),
+            ("2", "Håga"),
+            ("7", "Norby Gottsunda"),
+        ]
 
 
 class TestULDirections:

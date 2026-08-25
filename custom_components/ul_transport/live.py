@@ -395,6 +395,32 @@ def _name_score(index: GTFSIndex, trip: dict[str, Any], towards: str) -> int:
     return sum(1 for token in tokens if token in text)
 
 
+def _canonical_names(names: set[str], directions: int) -> set[str]:
+    """Fold UL's via-prefixed phrasings onto the destination they share.
+
+    The first and last runs of a line get a compound name - "Centralstationen
+    Gamla Uppsala" for the morning trip that starts downtown, "Gamla Uppsala"
+    for every other trip that day. The cache keeps both, which leaves three
+    names for two directions, and elimination then names neither. UL puts the
+    destination last, so grouping on the final word puts the variants back
+    together; the shortest phrasing is the one the line carries all day.
+    """
+    groups: dict[str, str] = {}
+    for name in names:
+        parts = name.split()
+        if not parts:
+            continue
+        key = parts[-1].lower()
+        current = groups.get(key)
+        if current is None or (len(name), name) < (len(current), current):
+            groups[key] = name
+    # Folding below the number of directions means two real destinations were
+    # merged - opposite ends that happen to share a last word. The raw names
+    # are the safer input then. A copy either way: the caller strikes names off
+    # as it pairs them, and the set it is handed may be the learned cache.
+    return set(groups.values()) if len(groups) >= directions else set(names)
+
+
 def direction_names(
     index: GTFSIndex, directions: list[tuple], name_cache: dict | None = None
 ) -> dict[tuple[str, str], str]:
@@ -432,11 +458,11 @@ def direction_names(
         if not longest:
             continue
 
-        free_dirs, free_names = set(longest), set(names)
+        free_dirs, free_names = set(longest), _canonical_names(names, len(longest))
         scores = {
             (direction, name): _name_score(index, trip, name)
             for direction, trip in longest.items()
-            for name in names
+            for name in free_names
         }
         for (direction, name), score in sorted(scores.items(), key=lambda kv: -kv[1]):
             if score <= 0 or direction not in free_dirs or name not in free_names:
@@ -817,26 +843,33 @@ async def _async_context(hass: HomeAssistant) -> tuple[GTFSIndex, LiveFeed]:
     return runtime["index"], runtime["feed"]
 
 
-def _name_cache(hass: HomeAssistant, ul_stop_id: int | str) -> dict:
-    """Per-stop store of learned direction names, kept for the process lifetime."""
+def _name_cache(hass: HomeAssistant) -> dict:
+    """Store of learned direction names, kept for the process lifetime."""
     runtime = hass.data.get(DOMAIN, {}).get("map")
     if runtime is None:
         return {}
-    return runtime.setdefault("names", {}).setdefault(str(ul_stop_id), {})
+    return runtime.setdefault("names", {})
 
 
-def _coordinator_directions(hass: HomeAssistant, ul_stop_id: int | str) -> list[tuple]:
-    """UL's own direction names for a stop, from the sensor coordinator.
+def _coordinator_directions(hass: HomeAssistant) -> list[tuple]:
+    """UL's own direction names, from every stop's sensor coordinator.
 
     Read from the unfiltered board rather than from ``data``: the sensors keep
     only the lines you picked, and a line missing from here falls back to its
     GTFS terminus - "Uppsala Naturstensvägen" where the app says "Flogsta
     Stenhagen".
+
+    Pooled across stops rather than read from the one being drawn. A direction
+    is a property of the line, not of where you stand, and a stop that only
+    ever advertises one of a line's two names can never pair either: line 2 at
+    Uppsala Centralstation lists "Gamla Uppsala" and nothing else, so both its
+    directions fell back to their termini. Another stop on the same line
+    supplies the missing half.
     """
+    pairs: set[tuple] = set()
     for coordinator in async_coordinators(hass):
-        if coordinator.stop_id == int(ul_stop_id):
-            return ul_directions(coordinator.board_keys)
-    return []
+        pairs.update(ul_directions(coordinator.board_keys))
+    return sorted(pairs)
 
 
 @websocket_api.websocket_command({vol.Required("type"): WS_STOPS})
@@ -859,8 +892,8 @@ async def ws_stops(
             area_id = ul_stop_to_gtfs_area(stop_id)
             names = direction_names(
                 index,
-                _coordinator_directions(hass, stop_id),
-                _name_cache(hass, stop_id),
+                _coordinator_directions(hass),
+                _name_cache(hass),
             )
             for trip_id, trip in index.trips.items():
                 # Only what the card would actually draw: offering a line the
@@ -929,8 +962,8 @@ async def ws_overview(
             kinds=msg.get("kinds"),
             lines=msg.get("lines"),
             destinations=msg.get("destinations"),
-            directions=_coordinator_directions(hass, msg["stop_id"]),
-            name_cache=_name_cache(hass, msg["stop_id"]),
+            directions=_coordinator_directions(hass),
+            name_cache=_name_cache(hass),
             horizon_minutes=msg.get("horizon_minutes", DEFAULT_HORIZON_MINUTES),
             list_minutes=msg.get("list_minutes"),
             linger_seconds=msg.get("linger_seconds", DEPARTED_LINGER_SECONDS),
@@ -972,8 +1005,8 @@ async def ws_line(
             msg["line"],
             msg["stop_id"],
             msg.get("trip_id"),
-            directions=_coordinator_directions(hass, msg["stop_id"]),
-            name_cache=_name_cache(hass, msg["stop_id"]),
+            directions=_coordinator_directions(hass),
+            name_cache=_name_cache(hass),
         )
     except LiveFeedError as err:
         connection.send_error(msg["id"], "live_feed_error", str(err))
