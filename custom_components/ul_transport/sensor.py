@@ -26,7 +26,11 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import DEFAULT_ICON, DOMAIN, TRAFFIC_TYPE_ICONS, TRAFFIC_TYPE_MAPPING
-from .coordinator import ULTransportConfigEntry, ULTransportDataUpdateCoordinator
+from .coordinator import (
+    ULTransportConfigEntry,
+    ULTransportDataUpdateCoordinator,
+    is_stop_entry,
+)
 from .quota import QUOTA_DAYS, QUOTA_REALTIME, QUOTA_STATIC, request_quota
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,8 +38,13 @@ _LOGGER = logging.getLogger(__name__)
 # The coordinator owns the polling; the entities only read what it already has.
 PARALLEL_UPDATES = 0
 
-# Suffixes this integration currently creates. Anything else on the entry is a
-# leftover from the departures-card sensors, which no longer exist.
+# Unique-id suffixes to keep on a stop entry. Anything else is a leftover from
+# the departures-card sensors, which no longer exist, and is pruned.
+#
+# The quota pair is listed even though a stop no longer creates it: before 2.3
+# it hung off whichever stop was set up first, and it is now moving to the
+# Trafiklab entry. Pruning it here would delete the entity - and its history -
+# moments before that entry adopts it.
 CURRENT_SUFFIXES = (
     "_in",
     "_next_departure",
@@ -77,7 +86,21 @@ async def async_setup_entry(
     config_entry: ULTransportConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up UL Transport sensors from a config entry."""
+    """Set up the sensors this entry owns.
+
+    The quota sensors watch the Trafiklab key, so they hang off the entry that
+    holds it - one pair per install, and they no longer move house when a stop
+    is removed.
+    """
+    if not is_stop_entry(config_entry):
+        async_add_entities(
+            [
+                ULQuotaSensor(hass, "realtime", QUOTA_REALTIME),
+                ULQuotaSensor(hass, "static", QUOTA_STATIC),
+            ]
+        )
+        return
+
     coordinator = config_entry.runtime_data
 
     sensors: list[SensorEntity] = [
@@ -89,17 +112,6 @@ async def async_setup_entry(
         for key, departures in coordinator.data.items()
         if departures
     ]
-
-    # One pair per install, not per stop - the quotas they watch belong to the
-    # API key. The first entry set up owns them; see async_unload_entry.
-    if (
-        hass.data[DOMAIN].setdefault("counter_entry", config_entry.entry_id)
-        == config_entry.entry_id
-    ):
-        sensors += [
-            ULQuotaSensor(hass, "realtime", QUOTA_REALTIME),
-            ULQuotaSensor(hass, "static", QUOTA_STATIC),
-        ]
 
     _prune_removed_entities(hass, config_entry)
     async_add_entities(sensors)

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 
 import pytest
 
@@ -68,3 +69,25 @@ def test_translation_covers_every_string(path):
     actual = set(_walk(json.loads(path.read_text())))
     assert not expected - actual, f"{path.stem} is missing {sorted(expected - actual)}"
     assert not actual - expected, f"{path.stem} has stale {sorted(actual - expected)}"
+
+
+def test_every_step_the_flow_can_show_has_strings():
+    """A step with no strings renders as its raw key, with no title or labels.
+
+    hassfest checks the shape of strings.json, not whether it covers the steps
+    this flow actually shows.
+    """
+    flow = (COMPONENT / "config_flow.py").read_text()
+    shown = set(re.findall(r'step_id="([a-z_]+)"', flow))
+    described = set(STRINGS["config"]["step"]) | set(STRINGS["options"]["step"])
+    assert shown <= described, f"no strings for {sorted(shown - described)}"
+
+
+def test_the_menu_labels_every_option_it_offers():
+    """An unlabelled menu option shows as a blank row."""
+    flow = (COMPONENT / "config_flow.py").read_text()
+    offered = set(
+        re.findall(r"menu_options=\[([^\]]+)\]", flow)[0].replace('"', "").split(", ")
+    )
+    labelled = set(STRINGS["config"]["step"]["user"]["menu_options"])
+    assert offered == labelled

@@ -2,7 +2,27 @@
   "config": {
     "step": {
       "user": {
-        "title": "Konfigurera UL Transport",
+        "title": "UL Transport",
+        "description": "**Livekartan** visar bussarna som faktiskt är på väg till dina hållplatser - var de är, när de kommer fram och hur många hållplatser bort de är. Den kräver två kostnadsfria API-nycklar från [Trafiklab](https://www.trafiklab.se/), eftersom UL:s eget avgångs-API bara publicerar tider - inte fordonspositioner eller linjesträckningar.\n\nAnge nycklarna en gång så kan alla hållplatser du lägger till använda dem. Du kan hoppa över detta och lägga till det senare - avgångssensorerna fungerar ändå.",
+        "menu_options": {
+          "trafiklab": "Konfigurera livekartan (API-nycklar från Trafiklab)",
+          "stop": "Hoppa över - lägg bara till en hållplats"
+        }
+      },
+      "trafiklab": {
+        "title": "API-nycklar från Trafiklab",
+        "description": "Skapa ett projekt på [trafiklab.se](https://www.trafiklab.se/) och lägg till **två** datamängder i det, klistra sedan in en nyckel för vardera nedan.\n\nBåda ingår i den kostnadsfria nivån Regional. De hör till ditt konto och inte till någon enskild hållplats, så du anger dem här en gång och aldrig mer.",
+        "data": {
+          "gtfs_static_key": "Nyckel för GTFS Regional",
+          "gtfs_realtime_key": "Nyckel för GTFS Regional Realtime"
+        },
+        "data_description": {
+          "gtfs_static_key": "Datamängden ”GTFS Regional”. Linjenamn, hållplatsnamn och linjesträckningar.",
+          "gtfs_realtime_key": "Datamängden ”GTFS Regional Realtime”. Fordonspositioner och ankomstprognoser."
+        }
+      },
+      "stop": {
+        "title": "Lägg till hållplats",
         "description": "Sök efter din buss-/spårvagnshållplats",
         "data": {
           "stop_query": "Hållplatsnamn (t.ex. 'Centralstationen')"
@@ -32,34 +52,45 @@
       "cannot_connect": "Kunde inte ansluta till UL API. Kontrollera din internetanslutning och försök igen.",
       "no_stops_found": "Inga hållplatser hittades för din sökning. Försök med ett annat sökord eller kontrollera stavningen.",
       "no_departures_found": "Inga avgångar hittades för denna hållplats. Hållplatsen kanske inte är i trafik eller så finns det inga planerade avgångar just nu.",
-      "unknown": "Ett oväntat fel inträffade. Försök igen senare."
+      "unknown": "Ett oväntat fel inträffade. Försök igen senare.",
+      "invalid_key": "Trafiklab avvisade nyckeln. Kontrollera att du kopierat rätt nyckel för datamängden."
     },
     "abort": {
-      "already_configured": "Denna hållplats är redan konfigurerad"
+      "already_configured": "Denna hållplats är redan konfigurerad",
+      "already_configured_trafiklab": "Trafiklab-nycklarna är redan konfigurerade. Ändra dem via Konfigurera på den posten."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Konfigurera linjer",
-        "description": "Välj vilka linjer som ska övervakas. {keys}",
+        "title": "Linjer och uppdatering",
+        "description": "Välj vilka linjer som ska övervakas.",
         "data": {
           "selected_lines": "Linjer",
-          "scan_interval": "Uppdateringsintervall (sekunder)",
-          "gtfs_static_key": "Trafiklab GTFS Regional (statisk) API-nyckel",
-          "gtfs_realtime_key": "Trafiklab GTFS Regional Realtime API-nyckel"
+          "scan_interval": "Uppdateringsintervall (sekunder)"
         },
         "data_description": {
-          "scan_interval": "Hur ofta ny avgångsdata ska hämtas (30-600 sekunder)",
-          "gtfs_static_key": "Valfri. Krävs för livekartan, som använder den för linjenamn, hållplatsnamn och rutter. Lämna tom för att endast använda avgångssensorer.",
-          "gtfs_realtime_key": "Valfri. Krävs för livekartan. Båda nycklarna gäller hela kontot, så det räcker att ange dem för en hållplats."
+          "scan_interval": "Hur ofta ny avgångsdata ska hämtas (30-600 sekunder)"
+        }
+      },
+      "keys": {
+        "title": "API-nycklar från Trafiklab",
+        "description": "Dessa låser upp livekartan för alla hållplatser. Ändrar du dem här ändras de överallt.",
+        "data": {
+          "gtfs_static_key": "Nyckel för GTFS Regional",
+          "gtfs_realtime_key": "Nyckel för GTFS Regional Realtime"
+        },
+        "data_description": {
+          "gtfs_static_key": "Datamängden ”GTFS Regional”. Linjenamn, hållplatsnamn och linjesträckningar.",
+          "gtfs_realtime_key": "Datamängden ”GTFS Regional Realtime”. Fordonspositioner och ankomstprognoser."
         }
       }
     },
     "error": {
       "cannot_connect": "Kunde inte ansluta till UL API. Kontrollera din internetanslutning och försök igen.",
       "no_departures_found": "Inga avgångar hittades för denna hållplats. Hållplatsen kanske inte är i trafik eller så finns det inga planerade avgångar just nu.",
-      "unknown": "Ett oväntat fel inträffade. Försök igen senare."
+      "unknown": "Ett oväntat fel inträffade. Försök igen senare.",
+      "invalid_key": "Trafiklab avvisade nyckeln. Kontrollera att du kopierat rätt nyckel för datamängden."
     }
   },
   "entity": {

@@ -45,21 +45,30 @@ free API keys — see [Live map card](#live-map-card).
 Copy `custom_components/ul_transport` into your Home Assistant `config/custom_components`
 directory and restart.
 
-## Set up your first stop
+## Setup
 
-1. **Settings → Devices & Services → + Add Integration**
-2. Search for **UL Transport**
-3. Type part of your stop's name — "Centralstationen", "Gränby", whatever you
+**Settings → Devices & Services → + Add Integration**, search for **UL
+Transport**. The first run asks one question:
+
+- **Set up the live map** — enter two free Trafiklab keys, once, for the whole
+  install. See [Live map card](#live-map-card).
+- **Skip** — go straight to adding a stop. Departure sensors need no keys, and
+  you can add the map later.
+
+### Adding a stop
+
+1. Type part of your stop's name — "Centralstationen", "Gränby", whatever you
    would say out loud
-4. Pick your stop from the results
-5. Choose which lines to follow. **Leave it empty for all of them**, which also
+2. Pick your stop from the results
+3. Choose which lines to follow. **Leave it empty for all of them**, which also
    covers lines that only run at other times of day
-6. Set how often to refresh (default 60 s, range 30–600 s)
+4. Set how often to refresh (default 60 s, range 30–600 s)
 
 ![Searching for a stop by name in the setup dialog](docs/images/setup.png)
 
-Repeat for as many stops as you like — each becomes its own device. To change
-anything later, press **Configure** on the integration.
+Repeat for as many stops as you like — each becomes its own device, and after
+the first run the integration goes straight to this search. To change lines or
+the refresh interval later, press **Configure** on that stop.
 
 ## Entities
 
@@ -111,15 +120,25 @@ looking and no vehicle data reaches your recorder.
 
 ### 1. Get two free Trafiklab keys
 
+UL's own departure API publishes times but not vehicle positions or route
+geometry, so the map needs a second source. Both datasets are free.
+
 1. Register at [trafiklab.se](https://www.trafiklab.se/) and create a project
 2. Add **two** datasets to it, and copy the key for each:
    - **GTFS Regional** — line names, stop names, route geometry
    - **GTFS Regional Realtime** — vehicle positions and arrival predictions
-3. In Home Assistant, press **Configure** on any UL Transport stop and paste
-   both keys
+3. In Home Assistant, add the integration and choose **Set up the live map**,
+   then paste both keys
 
-The keys are account-wide, so you enter them once. Every other stop then tells
-you which stop holds them instead of asking again.
+They are checked against Trafiklab before being saved, so a key pasted into the
+wrong box is caught there rather than by the map silently never appearing.
+
+The keys live in their own **Trafiklab API** entry, separate from your stops.
+You enter them once for the whole install, every stop uses them, and removing a
+stop leaves them alone. To change them later, press **Configure** on that entry.
+
+Already have stops but no map? Add the integration again — the live map option
+is offered whenever the keys are not set up yet.
 
 The first load downloads a ~26 MB timetable and builds an index — a few seconds
 — then refreshes quietly every 6 hours.
@@ -221,10 +240,10 @@ dashboard. A tab left open across an upgrade — usually a wall panel — needs 
 hard reload. If it still does not appear, check that **Settings → Dashboards →
 Resources** lists `/ul_transport/ul-transport-map.js`.
 
-**The map never loads.** Both Trafiklab keys have to be set, and they have to be
-for the two *different* datasets. Check
-`sensor.trafiklab_api_static_requests_30_days` — if it is 0, the timetable was
-never downloaded.
+**The map never loads.** Check that a **Trafiklab API** entry exists under
+Devices & Services and holds a key for each of the two *different* datasets. If
+`sensor.trafiklab_api_static_requests_30_days` is 0, the timetable was never
+downloaded.
 
 **Rate limit errors from UL.** Raise the refresh interval, and wait a few minutes
 between configuration changes.
@@ -236,8 +255,9 @@ The keys are redacted.
 
 ## Removing it
 
-Delete the stops from **Settings → Devices & Services**. The card's dashboard
-resource is removed with the last stop. Then uninstall from HACS.
+Delete the stops from **Settings → Devices & Services**, and the **Trafiklab
+API** entry if you set one up. The card's dashboard resource is removed with the
+last entry. Then uninstall from HACS.
 
 ## Documentation
 

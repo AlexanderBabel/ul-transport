@@ -1,4 +1,11 @@
-"""Config flow for UL Transport integration."""
+"""Config flow for UL Transport integration.
+
+Two kinds of entry live in this domain. One holds the Trafiklab keys for the
+whole install; the rest are stops. Home Assistant creates one entry per flow, so
+the keys and a stop cannot be set up in a single pass - instead the first run
+offers a menu, and once the keys have an entry of their own the menu stops
+appearing and every later run goes straight to the stop search.
+"""
 
 from __future__ import annotations
 
@@ -19,6 +26,7 @@ from .const import (
     API_STOP_DEPARTURES,
     API_STOPS_SEARCH,
     API_TIMEOUT,
+    CONF_ENTRY_TYPE,
     CONF_GTFS_REALTIME_KEY,
     CONF_GTFS_STATIC_KEY,
     CONF_SCAN_INTERVAL,
@@ -27,9 +35,17 @@ from .const import (
     CONF_STOP_NAME,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    ENTRY_TYPE_STOP,
+    ENTRY_TYPE_TRAFIKLAB,
+    GTFS_RT_URL,
+    GTFS_STATIC_URL,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
+    TRAFIKLAB_TITLE,
+    TRAFIKLAB_UNIQUE_ID,
 )
+from .coordinator import trafiklab_entry
+from .quota import count_request
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -76,6 +92,39 @@ async def async_get_board(hass: HomeAssistant, stop_id: int) -> tuple[str, list[
     return data.get("name", ""), sorted(keys)
 
 
+async def async_validate_keys(hass: HomeAssistant, static: str, realtime: str) -> None:
+    """Check both keys against Trafiklab before writing them to an entry.
+
+    A key typed wrong otherwise fails much later and much more quietly - the
+    sensors carry on working and the map simply never appears.
+
+    The static feed is ~26 MB, so it is checked on the response status alone and
+    the body is never read. Both calls are counted: Trafiklab counts them.
+    """
+    session = async_get_clientsession(hass)
+
+    async def check(url: str, key: str, field: str, counter: str) -> None:
+        try:
+            async with asyncio.timeout(API_TIMEOUT):
+                async with session.get(url, params={"key": key}) as response:
+                    count_request(hass, counter)
+                    # Trafiklab answers a bad or unsubscribed key with 401/403.
+                    if response.status in (401, 403):
+                        raise InvalidKey(field)
+                    if response.status >= 400:
+                        raise CannotConnect(f"HTTP {response.status} from {url}")
+        except (TimeoutError, aiohttp.ClientError) as err:
+            raise CannotConnect(f"Could not reach Trafiklab: {err}") from err
+
+    await check(GTFS_STATIC_URL, static, CONF_GTFS_STATIC_KEY, "gtfs_static")
+    await check(
+        GTFS_RT_URL.format(feed="TripUpdates"),
+        realtime,
+        CONF_GTFS_REALTIME_KEY,
+        "rt_TripUpdates",
+    )
+
+
 def _line_options(
     keys: list[str], unavailable: set[str] | None = None
 ) -> list[selector.SelectOptionDict]:
@@ -100,6 +149,16 @@ def _scan_interval_selector() -> Any:
     )
 
 
+def _keys_schema(static: str = "", realtime: str = "") -> vol.Schema:
+    """The two Trafiklab keys, asked for in one place and only one place."""
+    return vol.Schema(
+        {
+            vol.Required(CONF_GTFS_STATIC_KEY, default=static): str,
+            vol.Required(CONF_GTFS_REALTIME_KEY, default=realtime): str,
+        }
+    )
+
+
 class ULTransportConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for UL Transport."""
 
@@ -108,8 +167,10 @@ class ULTransportConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
-    ) -> ULTransportOptionsFlowHandler:
-        """Get the options flow for this handler."""
+    ) -> config_entries.OptionsFlow:
+        """Keys and stops are configured separately, so they get their own flows."""
+        if config_entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_TRAFIKLAB:
+            return ULTrafiklabOptionsFlowHandler()
         return ULTransportOptionsFlowHandler()
 
     def __init__(self) -> None:
@@ -122,7 +183,76 @@ class ULTransportConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the initial step where user enters stop name."""
+        """Offer the live map first, but only while it has nowhere to live.
+
+        Once the keys have an entry, the only thing left to add is a stop, so
+        asking again would be a dead end.
+        """
+        if trafiklab_entry(self.hass) is not None:
+            return await self.async_step_stop()
+        return self.async_show_menu(step_id="user", menu_options=["trafiklab", "stop"])
+
+    async def async_step_trafiklab(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Set up the live map: two Trafiklab keys, entered once for the install."""
+        await self.async_set_unique_id(TRAFIKLAB_UNIQUE_ID)
+        self._abort_if_unique_id_configured(error="already_configured_trafiklab")
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            static = user_input[CONF_GTFS_STATIC_KEY].strip()
+            realtime = user_input[CONF_GTFS_REALTIME_KEY].strip()
+            try:
+                await async_validate_keys(self.hass, static, realtime)
+            except InvalidKey as err:
+                errors[err.field] = "invalid_key"
+            except CannotConnect as err:
+                _LOGGER.debug("Trafiklab key check failed: %s", err)
+                errors["base"] = "cannot_connect"
+            except Exception:
+                _LOGGER.exception("Unexpected error checking the Trafiklab keys")
+                errors["base"] = "unknown"
+            else:
+                return self.async_create_entry(
+                    title=TRAFIKLAB_TITLE,
+                    data={
+                        CONF_ENTRY_TYPE: ENTRY_TYPE_TRAFIKLAB,
+                        CONF_GTFS_STATIC_KEY: static,
+                        CONF_GTFS_REALTIME_KEY: realtime,
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="trafiklab",
+            data_schema=_keys_schema(
+                (user_input or {}).get(CONF_GTFS_STATIC_KEY, ""),
+                (user_input or {}).get(CONF_GTFS_REALTIME_KEY, ""),
+            ),
+            errors=errors,
+        )
+
+    async def async_step_import(self, import_data: dict[str, Any]) -> ConfigFlowResult:
+        """Adopt keys that an older version left on a stop entry.
+
+        Not validated: they were working a moment ago, and a Trafiklab outage
+        during a restart must not be what loses them.
+        """
+        await self.async_set_unique_id(TRAFIKLAB_UNIQUE_ID)
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(
+            title=TRAFIKLAB_TITLE,
+            data={
+                CONF_ENTRY_TYPE: ENTRY_TYPE_TRAFIKLAB,
+                CONF_GTFS_STATIC_KEY: import_data[CONF_GTFS_STATIC_KEY],
+                CONF_GTFS_REALTIME_KEY: import_data[CONF_GTFS_REALTIME_KEY],
+            },
+        )
+
+    async def async_step_stop(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle the step where user enters stop name."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -143,7 +273,7 @@ class ULTransportConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     return await self.async_step_select_stop()
 
         return self.async_show_form(
-            step_id="user",
+            step_id="stop",
             data_schema=vol.Schema({vol.Required("stop_query", default=""): str}),
             errors=errors,
         )
@@ -204,6 +334,7 @@ class ULTransportConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(
                 title=self._stop_name,
                 data={
+                    CONF_ENTRY_TYPE: ENTRY_TYPE_STOP,
                     CONF_STOP_ID: self._stop_id,
                     CONF_STOP_NAME: self._stop_name,
                     CONF_SELECTED_LINES: user_input.get(CONF_SELECTED_LINES, []),
@@ -234,28 +365,63 @@ class ULTransportConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
 
-def _map_keys_entry(hass: HomeAssistant) -> config_entries.ConfigEntry | None:
-    """The one stop that holds the Trafiklab keys, if any stop does.
+class ULTrafiklabOptionsFlowHandler(config_entries.OptionsFlow):
+    """Edit the Trafiklab keys - the one place they are ever entered."""
 
-    They unlock the same account-wide feeds whichever stop they are typed on,
-    so they are asked for once and edited where they were entered rather than
-    copied onto every stop. The first entry holding them keeps them, so two
-    stops that both have keys today do not hide the fields from each other.
-    """
-    for entry in hass.config_entries.async_entries(DOMAIN):
-        static = entry.options.get(CONF_GTFS_STATIC_KEY) or entry.data.get(
-            CONF_GTFS_STATIC_KEY
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Hand straight over to the keys step.
+
+        Options flows have to start at ``init``, and the stop flow already uses
+        that id for its own strings; a separate step keeps the two sets apart.
+        """
+        return await self.async_step_keys(user_input)
+
+    async def async_step_keys(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage the keys."""
+        errors: dict[str, str] = {}
+
+        def current(key: str) -> str:
+            return self.config_entry.options.get(
+                key, self.config_entry.data.get(key, "")
+            )
+
+        if user_input is not None:
+            static = user_input[CONF_GTFS_STATIC_KEY].strip()
+            realtime = user_input[CONF_GTFS_REALTIME_KEY].strip()
+            try:
+                await async_validate_keys(self.hass, static, realtime)
+            except InvalidKey as err:
+                errors[err.field] = "invalid_key"
+            except CannotConnect as err:
+                _LOGGER.debug("Trafiklab key check failed: %s", err)
+                errors["base"] = "cannot_connect"
+            except Exception:
+                _LOGGER.exception("Unexpected error checking the Trafiklab keys")
+                errors["base"] = "unknown"
+            else:
+                return self.async_create_entry(
+                    title="",
+                    data={
+                        CONF_GTFS_STATIC_KEY: static,
+                        CONF_GTFS_REALTIME_KEY: realtime,
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="keys",
+            data_schema=_keys_schema(
+                current(CONF_GTFS_STATIC_KEY), current(CONF_GTFS_REALTIME_KEY)
+            ),
+            errors=errors,
         )
-        realtime = entry.options.get(CONF_GTFS_REALTIME_KEY) or entry.data.get(
-            CONF_GTFS_REALTIME_KEY
-        )
-        if static and realtime:
-            return entry
-    return None
 
 
 class ULTransportOptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow for UL Transport."""
+    """Handle options flow for one stop."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -263,32 +429,21 @@ class ULTransportOptionsFlowHandler(config_entries.OptionsFlow):
         """Manage the options."""
         errors: dict[str, str] = {}
 
-        holder = _map_keys_entry(self.hass)
-        elsewhere = (
-            holder if holder and holder.entry_id != self.config_entry.entry_id else None
-        )
-
         def current(key: str, fallback: Any) -> Any:
             return self.config_entry.options.get(
                 key, self.config_entry.data.get(key, fallback)
             )
 
         if user_input is not None:
-            options = {
-                CONF_SELECTED_LINES: user_input.get(CONF_SELECTED_LINES, []),
-                CONF_SCAN_INTERVAL: user_input.get(
-                    CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                ),
-            }
-            # Only this entry's own keys are editable here; when another entry
-            # holds them the fields are not shown, and writing "" would blank
-            # what that entry stored.
-            if elsewhere is None:
-                options[CONF_GTFS_STATIC_KEY] = user_input.get(CONF_GTFS_STATIC_KEY, "")
-                options[CONF_GTFS_REALTIME_KEY] = user_input.get(
-                    CONF_GTFS_REALTIME_KEY, ""
-                )
-            return self.async_create_entry(title="", data=options)
+            return self.async_create_entry(
+                title="",
+                data={
+                    CONF_SELECTED_LINES: user_input.get(CONF_SELECTED_LINES, []),
+                    CONF_SCAN_INTERVAL: user_input.get(
+                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                    ),
+                },
+            )
 
         try:
             _, available_lines = await async_get_board(
@@ -310,51 +465,40 @@ class ULTransportOptionsFlowHandler(config_entries.OptionsFlow):
         # Merged so a line that has stopped running can still be deselected.
         all_lines = sorted(set(available_lines) | set(current_selection))
 
-        schema: dict[Any, Any] = {
-            vol.Optional(
-                CONF_SELECTED_LINES, default=current_selection
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=_line_options(
-                        all_lines, unavailable=set(all_lines) - set(available_lines)
-                    ),
-                    multiple=True,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-            vol.Optional(
-                CONF_SCAN_INTERVAL,
-                default=current(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-            ): _scan_interval_selector(),
-        }
-        # Both keys are needed for the live map; leave blank to skip it and keep
-        # departure sensors only. They are account-wide, so they are asked for
-        # on one stop only - whichever one has them is where they are edited.
-        if elsewhere is None:
-            schema[
-                vol.Optional(
-                    CONF_GTFS_STATIC_KEY, default=current(CONF_GTFS_STATIC_KEY, "")
-                )
-            ] = str
-            schema[
-                vol.Optional(
-                    CONF_GTFS_REALTIME_KEY, default=current(CONF_GTFS_REALTIME_KEY, "")
-                )
-            ] = str
-
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(schema),
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_SELECTED_LINES, default=current_selection
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=_line_options(
+                                all_lines,
+                                unavailable=set(all_lines) - set(available_lines),
+                            ),
+                            multiple=True,
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_SCAN_INTERVAL,
+                        default=current(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                    ): _scan_interval_selector(),
+                }
+            ),
             errors=errors,
-            description_placeholders={
-                "keys": (
-                    f"The live map uses the Trafiklab keys set on {elsewhere.title}."
-                    if elsewhere is not None
-                    else ""
-                )
-            },
         )
 
 
 class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""
+
+
+class InvalidKey(HomeAssistantError):
+    """A Trafiklab key the API refused. ``field`` names which of the two."""
+
+    def __init__(self, field: str) -> None:
+        """Remember which field to hang the error on."""
+        super().__init__(f"Trafiklab rejected {field}")
+        self.field = field

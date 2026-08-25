@@ -15,7 +15,15 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .const import API_STOP_DEPARTURES, API_TIMEOUT, DOMAIN
+from .const import (
+    API_STOP_DEPARTURES,
+    API_TIMEOUT,
+    CONF_ENTRY_TYPE,
+    CONF_GTFS_REALTIME_KEY,
+    CONF_GTFS_STATIC_KEY,
+    DOMAIN,
+    ENTRY_TYPE_TRAFIKLAB,
+)
 from .quota import count_request
 
 _LOGGER = logging.getLogger(__name__)
@@ -155,12 +163,52 @@ class ULTransportDataUpdateCoordinator(
         return grouped
 
 
+def is_stop_entry(entry: ConfigEntry) -> bool:
+    """Whether this entry is a stop rather than the Trafiklab keys.
+
+    Entries created before 2.3 carry no type at all, and every one of those is a
+    stop - the keys had no entry of their own to live in.
+    """
+    return entry.data.get(CONF_ENTRY_TYPE) != ENTRY_TYPE_TRAFIKLAB
+
+
+def trafiklab_entry(hass: HomeAssistant) -> ConfigEntry | None:
+    """The entry holding the Trafiklab keys, if the live map is set up."""
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if not is_stop_entry(entry):
+            return entry
+    return None
+
+
+def trafiklab_keys(hass: HomeAssistant) -> tuple[str, str] | None:
+    """The (static, realtime) keys, or None when the live map is not set up.
+
+    One entry holds them for the whole install, so a stop being removed cannot
+    take them with it.
+    """
+    entry = trafiklab_entry(hass)
+    if entry is None:
+        return None
+    static = entry.options.get(CONF_GTFS_STATIC_KEY) or entry.data.get(
+        CONF_GTFS_STATIC_KEY
+    )
+    realtime = entry.options.get(CONF_GTFS_REALTIME_KEY) or entry.data.get(
+        CONF_GTFS_REALTIME_KEY
+    )
+    if static and realtime:
+        return static, realtime
+    return None
+
+
 def async_coordinators(hass: HomeAssistant) -> list[ULTransportDataUpdateCoordinator]:
     """Every stop that is currently set up.
 
     Config entries are the register of what exists; hass.data holds only the
-    state the stops share (the map runtime, the request tally).
+    state the stops share (the map runtime, the request tally). The Trafiklab
+    entry is skipped - its runtime_data is not a coordinator.
     """
     return [
-        entry.runtime_data for entry in hass.config_entries.async_loaded_entries(DOMAIN)
+        entry.runtime_data
+        for entry in hass.config_entries.async_loaded_entries(DOMAIN)
+        if is_stop_entry(entry)
     ]

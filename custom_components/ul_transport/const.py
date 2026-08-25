@@ -21,6 +21,19 @@ API_STOP_DEPARTURES = "https://api.ul.se/api/v3/stop"
 CONF_GTFS_STATIC_KEY = "gtfs_static_key"
 CONF_GTFS_REALTIME_KEY = "gtfs_realtime_key"
 
+# Two kinds of config entry share this domain: one holds the Trafiklab keys for
+# the whole install, the rest are stops. Before 2.3 the keys lived on whichever
+# stop was set up first, so removing that stop took the map down for every other
+# one; giving them an entry of their own is what fixes that.
+CONF_ENTRY_TYPE = "entry_type"
+ENTRY_TYPE_TRAFIKLAB = "trafiklab"
+ENTRY_TYPE_STOP = "stop"
+
+# Fixed, so a second attempt at adding the keys aborts as already-configured
+# rather than making a rival entry.
+TRAFIKLAB_UNIQUE_ID = f"{DOMAIN}_trafiklab"
+TRAFIKLAB_TITLE = "Trafiklab API"
+
 GTFS_STATIC_URL = "https://opendata.samtrafiken.se/gtfs/ul/ul.zip"
 GTFS_RT_URL = "https://opendata.samtrafiken.se/gtfs-rt/ul/{feed}.pb"
 

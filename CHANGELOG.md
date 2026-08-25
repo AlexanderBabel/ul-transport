@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.3.0 - 2026-08-25
+
+The Trafiklab keys move into a config entry of their own. Before this they
+lived on whichever stop happened to be set up first, so removing that stop took
+the live map down for every other stop on the install.
+
+Nothing to do on upgrade: the keys are moved automatically the first time Home
+Assistant restarts, and the quota sensors keep their entity ids and their
+history.
+
+### Added
+
+- Setup now opens by offering the live map and saying what it needs and why,
+  with a **Skip** that goes straight to adding a stop. Departure sensors have
+  never needed the keys, and the flow no longer implies otherwise.
+- The keys are checked against Trafiklab before they are saved, and a refused
+  key is reported on the field it belongs to - so the commonest mistake, the
+  two keys swapped between the boxes, is caught at setup rather than by the map
+  silently never appearing.
+
+### Changed
+
+- **The Trafiklab keys live in their own entry.** One place to enter them, one
+  place to edit them, and stops can be added or removed without touching them.
+- The realtime and static quota sensors hang off that entry instead of moving
+  house whenever a stop was removed. Their entity ids and history are kept.
+- The per-stop options no longer show the key fields; they carry only lines and
+  the refresh interval.
+- Once the keys are set up the first question stops being asked, so adding a
+  second stop goes straight to the search.
+
 ## 2.2.0 - 2026-08-25
 
 Housekeeping against Home Assistant's integration quality scale, a proper

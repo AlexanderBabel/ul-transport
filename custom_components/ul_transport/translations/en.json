@@ -2,7 +2,27 @@
   "config": {
     "step": {
       "user": {
-        "title": "Configure UL Transport",
+        "title": "UL Transport",
+        "description": "**Live map** draws the buses actually heading to your stops - where they are, when they arrive and how many stops away they are. It needs two free [Trafiklab](https://www.trafiklab.se/) API keys, because UL's own departure API publishes only times, not vehicle positions or route geometry.\n\nSet the keys up once and every stop you add can use them. You can skip this and add it later - departure sensors work without it.",
+        "menu_options": {
+          "trafiklab": "Set up the live map (Trafiklab API keys)",
+          "stop": "Skip - just add a stop"
+        }
+      },
+      "trafiklab": {
+        "title": "Trafiklab API keys",
+        "description": "Create a project at [trafiklab.se](https://www.trafiklab.se/) and add **two** datasets to it, then paste a key for each below.\n\nBoth are on the free Regional tier. They belong to your account rather than to any one stop, so you enter them here once and never again.",
+        "data": {
+          "gtfs_static_key": "GTFS Regional key",
+          "gtfs_realtime_key": "GTFS Regional Realtime key"
+        },
+        "data_description": {
+          "gtfs_static_key": "Dataset “GTFS Regional”. Line names, stop names and route geometry.",
+          "gtfs_realtime_key": "Dataset “GTFS Regional Realtime”. Vehicle positions and arrival predictions."
+        }
+      },
+      "stop": {
+        "title": "Add a stop",
         "description": "Search for your bus/tram stop",
         "data": {
           "stop_query": "Stop name (e.g., 'Centralstationen')"
@@ -32,34 +52,45 @@
       "cannot_connect": "Failed to connect to UL API. Please check your internet connection and try again.",
       "no_stops_found": "No stops found matching your search. Try a different search term or check your spelling.",
       "no_departures_found": "No departures found for this stop. The stop may not be in service or there are no scheduled departures at this time.",
-      "unknown": "An unexpected error occurred. Please try again later."
+      "unknown": "An unexpected error occurred. Please try again later.",
+      "invalid_key": "Trafiklab rejected this key. Check you copied the right one for this dataset."
     },
     "abort": {
-      "already_configured": "This stop is already configured"
+      "already_configured": "This stop is already configured",
+      "already_configured_trafiklab": "The Trafiklab keys are already set up. Edit them from that entry's Configure button."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Configure Lines",
-        "description": "Select which lines to monitor. {keys}",
+        "title": "Lines and refresh",
+        "description": "Select which lines to monitor.",
         "data": {
           "selected_lines": "Lines",
-          "scan_interval": "Update interval (seconds)",
-          "gtfs_static_key": "Trafiklab GTFS Regional (static) API key",
-          "gtfs_realtime_key": "Trafiklab GTFS Regional Realtime API key"
+          "scan_interval": "Update interval (seconds)"
         },
         "data_description": {
-          "scan_interval": "How often to fetch new departure data (30-600 seconds)",
-          "gtfs_static_key": "Optional. Needed for the live map, which uses it for line names, stop names and route geometry. Leave blank to use departure sensors only.",
-          "gtfs_realtime_key": "Optional. Needed for the live map. Both keys are account-wide, so setting them on one stop enables the map for all of them."
+          "scan_interval": "How often to fetch new departure data (30-600 seconds)"
+        }
+      },
+      "keys": {
+        "title": "Trafiklab API keys",
+        "description": "These unlock the live map for every stop. Changing them here changes them everywhere.",
+        "data": {
+          "gtfs_static_key": "GTFS Regional key",
+          "gtfs_realtime_key": "GTFS Regional Realtime key"
+        },
+        "data_description": {
+          "gtfs_static_key": "Dataset “GTFS Regional”. Line names, stop names and route geometry.",
+          "gtfs_realtime_key": "Dataset “GTFS Regional Realtime”. Vehicle positions and arrival predictions."
         }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect to UL API. Please check your internet connection and try again.",
       "no_departures_found": "No departures found for this stop. The stop may not be in service or there are no scheduled departures at this time.",
-      "unknown": "An unexpected error occurred. Please try again later."
+      "unknown": "An unexpected error occurred. Please try again later.",
+      "invalid_key": "Trafiklab rejected this key. Check you copied the right one for this dataset."
     }
   },
   "entity": {
