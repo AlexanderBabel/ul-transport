@@ -20,24 +20,26 @@ from homeassistant.components.sensor import (
 from homeassistant.const import EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import (
-    DEFAULT_ICON,
-    DOMAIN,
-    REQUEST_COUNTS,
-    TRAFFIC_TYPE_ICONS,
-    TRAFFIC_TYPE_MAPPING,
-)
+from .const import DEFAULT_ICON, DOMAIN, TRAFFIC_TYPE_ICONS, TRAFFIC_TYPE_MAPPING
 from .coordinator import ULTransportConfigEntry, ULTransportDataUpdateCoordinator
+from .quota import QUOTA_DAYS, QUOTA_REALTIME, QUOTA_STATIC, request_quota
 
 _LOGGER = logging.getLogger(__name__)
 
 # Suffixes this integration currently creates. Anything else on the entry is a
 # leftover from the departures-card sensors, which no longer exist.
-CURRENT_SUFFIXES = ("_in", "_next_departure", "_last_update", "_api_requests")
+CURRENT_SUFFIXES = (
+    "_in",
+    "_next_departure",
+    "_last_update",
+    "_realtime_quota",
+    "_static_quota",
+)
 
 
 def _parse(value: str | None) -> datetime | None:
@@ -85,13 +87,16 @@ async def async_setup_entry(
         if departures
     ]
 
-    # One per install, not per stop - the quota it watches is account-wide. The
-    # first entry set up owns it; see async_unload_entry for the handover.
+    # One pair per install, not per stop - the quotas they watch belong to the
+    # API key. The first entry set up owns them; see async_unload_entry.
     if (
         hass.data[DOMAIN].setdefault("counter_entry", config_entry.entry_id)
         == config_entry.entry_id
     ):
-        sensors.append(ULApiRequestsSensor(hass))
+        sensors += [
+            ULQuotaSensor(hass, "realtime", QUOTA_REALTIME),
+            ULQuotaSensor(hass, "static", QUOTA_STATIC),
+        ]
 
     _prune_removed_entities(hass, config_entry)
     async_add_entities(sensors)
@@ -262,56 +267,55 @@ class ULTransportLastUpdateSensor(
         return self.coordinator.last_successful_update is not None
 
 
-class ULApiRequestsSensor(SensorEntity):
-    """Upstream HTTP requests made since Home Assistant started.
+class ULQuotaSensor(SensorEntity):
+    """One Trafiklab quota, as requests spent in the trailing 30 days.
 
-    Exists to answer "am I anywhere near the Trafiklab quota", so it counts
-    calls rather than successes: a 304 or a 429 is spent quota too. Account-wide
-    rather than per stop, so it belongs to no single stop's device.
+    Trafiklab counts calls, not successes, so a 304 or a 429 is spent quota and
+    is counted here too. The window is what the quota is measured over, so the
+    state falls as old days age out: a total that only ever rises cannot say
+    whether the next request will be refused.
+
+    On its own device rather than a stop's, because the key is account-wide.
     """
 
-    _attr_name = "UL Transport API requests"
-    _attr_unique_id = f"{DOMAIN}_api_requests"
-    _attr_icon = "mdi:api"
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_has_entity_name = True
+    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = "requests"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_should_poll = False
+    _attr_icon = "mdi:api"
 
-    def __init__(self, hass: HomeAssistant) -> None:
-        """Read the tally straight out of hass.data.
-
-        Held privately rather than on ``self.hass``, which the entity platform
-        owns, so the counter can also be read before the entity is added.
-        """
+    def __init__(self, hass: HomeAssistant, kind: str, limit: int) -> None:
+        """Watch one quota. ``kind`` names the method on RequestQuota."""
         self._hass = hass
-        self._since = dt_util.utcnow()
-
-    @property
-    def _counts(self) -> dict[str, int]:
-        return self._hass.data.get(DOMAIN, {}).get(REQUEST_COUNTS, {})
+        self._kind = kind
+        self._limit = limit
+        self._attr_translation_key = f"{kind}_quota"
+        self._attr_unique_id = f"{DOMAIN}_{kind}_quota"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, "trafiklab")},
+            name="Trafiklab API",
+            manufacturer="Trafiklab",
+            model="GTFS Regional",
+            entry_type=DeviceEntryType.SERVICE,
+            configuration_url="https://www.trafiklab.se/api/",
+        )
 
     @property
     def native_value(self) -> int:
-        """Every upstream call this process has made."""
-        return sum(self._counts.values())
+        """Requests this quota has seen inside the window."""
+        return getattr(request_quota(self._hass), self._kind)()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """The tally per feed, plus what the Trafiklab quota actually sees."""
-        counts = self._counts
-        # ul_departures goes to UL's own API, which has no published quota;
-        # everything else is Trafiklab. not_modified is a tally of the rt_ calls
-        # that came back empty, not a request of its own, so it is not summed.
-        trafiklab = sum(
-            value
-            for key, value in counts.items()
-            if key not in ("rt_not_modified", "ul_departures")
-        )
-        hours = max((dt_util.utcnow() - self._since).total_seconds() / 3600, 1 / 60)
+        """How much is left, and where it all went."""
+        quota = request_quota(self._hass)
+        used = getattr(quota, self._kind)()
         return {
-            **counts,
-            "trafiklab_total": trafiklab,
-            "trafiklab_per_hour": round(trafiklab / hours, 1),
-            "since": self._since,
+            "limit": self._limit,
+            "remaining": max(self._limit - used, 0),
+            "percent_used": round(used / self._limit * 100, 1),
+            "window_days": QUOTA_DAYS,
+            # Every counter, including UL's own departure API, which has no
+            # published quota of its own but is the other half of the traffic.
+            "requests": quota.totals(),
         }

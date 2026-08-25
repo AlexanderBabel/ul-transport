@@ -67,17 +67,25 @@ Per stop:
 | `sensor.<stop>_last_update` | When the departure board was last fetched (diagnostic) |
 | `button.<stop>_refresh` | Pulls the departure board by hand |
 
-One per install:
+One per install, on their own **Trafiklab API** device — the key is
+account-wide, so these belong to no single stop:
 
-| Sensor | State |
-| --- | --- |
-| `sensor.ul_transport_api_requests` | Upstream requests made since Home Assistant started |
+| Sensor | State | Limit |
+| --- | --- | --- |
+| `sensor.trafiklab_api_realtime_requests_30_days` | Realtime feed requests in the last 30 days | 30,000 |
+| `sensor.trafiklab_api_static_requests_30_days` | Static GTFS downloads in the last 30 days | 60 |
 
-The request counter is there to watch the Trafiklab quota, so it counts
-calls rather than successes — a 304 or a 429 is spent quota too. Its
-attributes break the total down per feed, with `trafiklab_total` and
-`trafiklab_per_hour` as the numbers the quota actually sees (UL's own
-departure API is separate and unmetered).
+Both are diagnostic entities. They count calls rather than successes, because
+that is what Trafiklab counts — a 304 or a 429 is spent quota too — and they
+measure over the same trailing 30 days the quota does, so the state falls again
+as old days age out. Counts are persisted, so a restart does not reset them.
+
+Attributes on each: `limit`, `remaining`, `percent_used`, `window_days`, and
+`requests` — the full per-feed breakdown, including UL's own departure API,
+which is separate and unmetered.
+
+Once the realtime quota is spent the integration stops calling out on its own,
+serving the last data it has rather than collecting 429s.
 
 The state is a **number of minutes**, floored, so a numeric_state trigger is all
 an automation needs:
@@ -161,9 +169,9 @@ Clicking a bus or an arrival row in the overview switches to that line's view.
 | `destinations` | all | Only show departures going to these, e.g. `["Stockholm city"]` |
 | `line` | – | Pin the card to one line's route view instead of the overview |
 | `content` | `both` | `both`, `map` or `list` |
-| `include_positions` | `true` | Fetch the vehicle positions feed. `false` halves the requests, at the cost of not knowing whether a timetabled departure is already on the road |
+| `include_positions` | `true` (`false` for a list) | Fetch the vehicle positions feed. `false` halves the requests, at the cost of not knowing whether a timetabled departure is already on the road |
 | `layout` | `auto` | `auto`, `stacked` or `wide` |
-| `refresh` | `5` (`20` for a list) | Seconds between polls while the card is visible |
+| `refresh` | `5` (`90` for a list) | Seconds between polls while the card is visible |
 | `horizon_minutes` | `30` | Arrivals further out than this are listed but not plotted |
 | `list_minutes` | `90` | How far ahead the list looks, up to `1440` for a whole day |
 | `list_count` | `8` | Rows in the list, and the cap on what the server sends |
@@ -193,14 +201,16 @@ it gets there.
 
 ### A list on the overview, the map behind it
 
-`content: list` drops the map and defaults to a 20-second refresh, since nothing
-on screen moves between stops — four times cheaper than an open map.
+`content: list` drops the map and defaults to one request every 90 seconds —
+36× cheaper than an open map, and inside the quota even left up all day on a
+wall panel. Nothing on screen moves between stops, and the countdowns are
+worked out in the browser from the departure times, so they keep ticking down
+by the second between polls.
 
-It still reads the positions feed. It has nothing to plot with it, but positions
-are the only thing that can tell a departure the feed is silent about ("no live
-data") from one that is out on the road right now, and a list that calls a bus
-you could watch move "not yet running" is wrong in the way people notice. Set
-`include_positions: false` to trade that back for half the requests.
+It also skips the positions feed by default, which is the second of the two
+requests. The cost is that a departure the realtime feed says nothing about
+reads as "no live data" rather than as a bus already on the road. Set
+`include_positions: true` to buy that back at double the requests.
 
 That makes a cheap card for a dashboard overview, with the full map on a
 subview one tap away:
@@ -335,16 +345,29 @@ evidence that it left.
 
 ### Quota
 
-Trafiklab's free Bronze tier allows 30,000 requests per 30 days. Each refresh
-costs 2 requests (positions + predictions) shared across every viewer, so at the
-default 5-second refresh an open map costs ~24 requests/minute — roughly 20
-hours of map-watching per month. A `content: list` card refreshes every 20
-seconds instead, so it costs 6 requests/minute, or 3 with
-`include_positions: false`. `sensor.ul_transport_api_requests` reports what has
-actually been spent.
+Trafiklab's free Regional tier allows 30,000 realtime requests per 30 days —
+about 1,000 a day — and 60 static downloads. Every viewer of a stop shares one
+upstream fetch, so the cost is per card configuration, not per person:
+
+| Card | Requests/refresh | Cost while on screen | Left up 24/7 |
+| --- | --- | --- | --- |
+| `content: map` or `both`, 5 s | 2 | ~1,440/hour | far over |
+| `content: list`, 90 s (default) | 1 | 40/hour | ~960/day |
+| `content: list`, 90 s, `include_positions: true` | 2 | 80/hour | ~1,920/day |
+
+So an open map costs roughly a day of budget per hour: it is for looking at,
+not for leaving up. A default list card fits inside the quota even on a wall
+panel. `refresh` accepts up to 300 seconds if you want more headroom.
+
 Polling stops when the card is removed from the DOM or the browser tab is
-hidden. If you keep the map open on a wall panel, ask Trafiklab for a free quota
-upgrade.
+hidden, and the integration refuses to call out at all once the 30-day count
+reaches 30,000 — the card goes stale rather than the key getting blocked.
+Watch `sensor.trafiklab_api_realtime_requests_30_days` for where you actually
+stand, and ask Trafiklab for a free quota upgrade if a map really does need to
+stay open.
+
+The static feed is downloaded at most once a day (60 per 30 days allows two),
+so the only way to run that one out is repeatedly reloading the integration.
 
 ## Assist
 

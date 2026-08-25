@@ -74,6 +74,12 @@
       },
       "next_departure": {
         "name": "Nästa avgång"
+      },
+      "realtime_quota": {
+        "name": "Realtidsanrop (30 dagar)"
+      },
+      "static_quota": {
+        "name": "Statiska anrop (30 dagar)"
       }
     }
   }

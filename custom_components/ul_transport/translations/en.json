@@ -74,6 +74,12 @@
       },
       "next_departure": {
         "name": "Next departure"
+      },
+      "realtime_quota": {
+        "name": "Realtime requests (30 days)"
+      },
+      "static_quota": {
+        "name": "Static requests (30 days)"
       }
     }
   }

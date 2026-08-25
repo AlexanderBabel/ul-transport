@@ -30,6 +30,7 @@ from .llm_tool import (
     async_register as async_register_llm_api,
     async_unregister as async_unregister_llm_api,
 )
+from .quota import async_setup_quota
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -176,6 +177,8 @@ async def _async_register_resource(hass: HomeAssistant, url: str) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ULTransportConfigEntry) -> bool:
     """Set up UL Transport from a config entry."""
     hass.data.setdefault(DOMAIN, {})
+    # Before the first coordinator refresh, which is itself a counted request.
+    await async_setup_quota(hass)
 
     # Both registered even without API keys, so the card picker and its editor
     # can list stops and explain what is missing rather than erroring out - and

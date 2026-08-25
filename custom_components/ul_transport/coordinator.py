@@ -15,7 +15,8 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .const import API_STOP_DEPARTURES, API_TIMEOUT, DOMAIN, count_request
+from .const import API_STOP_DEPARTURES, API_TIMEOUT, DOMAIN
+from .quota import count_request
 
 _LOGGER = logging.getLogger(__name__)
 

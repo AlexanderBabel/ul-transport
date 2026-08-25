@@ -70,9 +70,11 @@ async def test_creates_one_device_for_the_stop(hass, entry):
     await _setup(hass, entry)
 
     devices = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)
-    assert len(devices) == 1
-    assert devices[0].name == MOCK_STOP_NAME
-    assert devices[0].identifiers == {(DOMAIN, str(MOCK_STOP_ID))}
+    # The stop, plus the API key's own device for the account-wide quotas.
+    by_id = {next(iter(d.identifiers)): d for d in devices}
+    assert by_id[(DOMAIN, str(MOCK_STOP_ID))].name == MOCK_STOP_NAME
+    assert by_id[(DOMAIN, "trafiklab")].name == "Trafiklab API"
+    assert len(devices) == 2
 
 
 async def test_every_entity_lands_on_that_device(hass, entry):
@@ -80,9 +82,11 @@ async def test_every_entity_lands_on_that_device(hass, entry):
 
     registry = er.async_get(hass)
     entities = er.async_entries_for_config_entry(registry, entry.entry_id)
-    device_id = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)[
-        0
-    ].id
+    devices = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)
+    device_id = next(
+        d.id for d in devices if d.identifiers == {(DOMAIN, str(MOCK_STOP_ID))}
+    )
+    quota_id = next(d.id for d in devices if d.identifiers == {(DOMAIN, "trafiklab")})
 
     unique_ids = {e.unique_id for e in entities}
     assert f"{MOCK_STOP_ID}_refresh" in unique_ids
@@ -90,10 +94,10 @@ async def test_every_entity_lands_on_that_device(hass, entry):
     assert f"{MOCK_STOP_ID}_last_update" in unique_ids
     assert f"{MOCK_STOP_ID}_2_Uppsala Central_in" in unique_ids
 
-    # The account-wide request counter belongs to no single stop.
+    # The account-wide quota meters belong to the API key, not to any one stop.
     for entity in entities:
-        if entity.unique_id == f"{DOMAIN}_api_requests":
-            assert entity.device_id is None
+        if entity.unique_id.endswith(("_realtime_quota", "_static_quota")):
+            assert entity.device_id == quota_id
         else:
             assert entity.device_id == device_id
 
@@ -108,6 +112,10 @@ async def test_the_stop_name_prefixes_the_entity_names(hass, entry):
         if state.entity_id.startswith(("sensor.", "button."))
     }
     assert f"{MOCK_STOP_NAME} Next departure" in names
+    # The quota meters take their prefix from the API key's device, not a stop.
+    assert "Trafiklab API Realtime requests (30 days)" in names
+    assert hass.states.get("sensor.trafiklab_api_realtime_requests_30_days")
+    assert hass.states.get("sensor.trafiklab_api_static_requests_30_days")
     assert f"{MOCK_STOP_NAME} Line 2 to Uppsala Central" in names
     assert f"{MOCK_STOP_NAME} Refresh" in names
 

@@ -9,15 +9,23 @@ from datetime import UTC, datetime, timedelta
 import json
 import pathlib
 
+from homeassistant.util import dt as dt_util
 import pytest
 
 from custom_components.ul_transport.button import ULTransportRefreshButton
-from custom_components.ul_transport.const import DOMAIN, count_request
+from custom_components.ul_transport.const import DOMAIN
 from custom_components.ul_transport.coordinator import ULTransportDataUpdateCoordinator
+from custom_components.ul_transport.quota import (
+    QUOTA_DAYS,
+    QUOTA_REALTIME,
+    QUOTA_STATIC,
+    count_request,
+    request_quota,
+)
 from custom_components.ul_transport.sensor import (
-    ULApiRequestsSensor,
     ULLineDepartureSensor,
     ULNextDepartureSensor,
+    ULQuotaSensor,
     ULTransportLastUpdateSensor,
 )
 
@@ -162,13 +170,15 @@ class TestLastUpdateSensor:
         assert sensor.available is True
 
 
-class TestApiRequestsSensor:
-    """The quota meter: what has been spent, and on which API."""
+class TestQuotaSensors:
+    """The quota meters: what has been spent of each, and on what."""
 
     def test_zero_before_anything_is_fetched(self, hass):
-        assert ULApiRequestsSensor(hass).native_value == 0
+        sensor = ULQuotaSensor(hass, "realtime", QUOTA_REALTIME)
+        assert sensor.native_value == 0
+        assert sensor.extra_state_attributes["remaining"] == QUOTA_REALTIME
 
-    def test_counts_every_call_and_splits_by_api(self, hass):
+    def test_realtime_counts_only_what_that_quota_sees(self, hass):
         for _ in range(3):
             count_request(hass, "rt_TripUpdates")
         count_request(hass, "rt_VehiclePositions")
@@ -176,15 +186,33 @@ class TestApiRequestsSensor:
         count_request(hass, "gtfs_static")
         count_request(hass, "ul_departures")
 
-        sensor = ULApiRequestsSensor(hass)
-        assert sensor.native_value == 7
-        attributes = sensor.extra_state_attributes
-        assert attributes["rt_TripUpdates"] == 3
-        assert attributes["ul_departures"] == 1
-        # UL is a different API and not_modified is a tally of calls already
+        sensor = ULQuotaSensor(hass, "realtime", QUOTA_REALTIME)
+        # UL is a different API, and not_modified is a tally of calls already
         # counted, so neither belongs in what the Trafiklab quota sees.
-        assert attributes["trafiklab_total"] == 5
-        assert attributes["trafiklab_per_hour"] > 0
+        assert sensor.native_value == 4
+        attributes = sensor.extra_state_attributes
+        assert attributes["remaining"] == QUOTA_REALTIME - 4
+        assert attributes["limit"] == QUOTA_REALTIME
+        # The breakdown still carries everything, quota or not.
+        assert attributes["requests"]["rt_TripUpdates"] == 3
+        assert attributes["requests"]["ul_departures"] == 1
+
+    def test_static_counts_only_the_static_downloads(self, hass):
+        count_request(hass, "gtfs_static")
+        count_request(hass, "rt_TripUpdates")
+
+        sensor = ULQuotaSensor(hass, "static", QUOTA_STATIC)
+        assert sensor.native_value == 1
+        assert sensor.extra_state_attributes["remaining"] == QUOTA_STATIC - 1
+
+    def test_days_outside_the_window_are_forgotten(self, hass):
+        quota = request_quota(hass)
+        # A day older than the window; the quota it spent has expired with it.
+        stale = (dt_util.now().date() - timedelta(days=QUOTA_DAYS)).isoformat()
+        quota._days[stale] = {"rt_TripUpdates": 500}
+        count_request(hass, "rt_TripUpdates")
+
+        assert quota.realtime() == 1
 
 
 class TestDeviceAndTranslations:

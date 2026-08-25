@@ -2,12 +2,6 @@
 
 from __future__ import annotations
 
-from collections import Counter
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from homeassistant.core import HomeAssistant
-
 DOMAIN = "ul_transport"
 CONF_STOP_ID = "stop_id"
 CONF_STOP_NAME = "stop_name"
@@ -129,14 +123,3 @@ ATTR_AREA = "area"
 ATTR_STOP_NAME = "stop_name"
 ATTR_LINE_COLOR = "line_color"
 ATTR_TEXT_COLOR = "text_color"
-
-
-# --- Upstream request tally ---
-# Four modules make HTTP calls and none of them owns the others, so the count
-# lives in hass.data rather than on a class. Read by the API requests sensor.
-REQUEST_COUNTS = "requests"
-
-
-def count_request(hass: HomeAssistant, key: str) -> None:
-    """Tally one upstream HTTP request."""
-    hass.data.setdefault(DOMAIN, {}).setdefault(REQUEST_COUNTS, Counter())[key] += 1

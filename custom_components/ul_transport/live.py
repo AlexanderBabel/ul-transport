@@ -43,10 +43,10 @@ from .const import (
     WS_LINE,
     WS_OVERVIEW,
     WS_STOPS,
-    count_request,
 )
 from .coordinator import async_coordinators
 from .gtfs import GTFSIndex, tokenize, ul_stop_to_gtfs_area
+from .quota import NOT_MODIFIED, QUOTA_REALTIME, count_request, request_quota
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -75,6 +75,17 @@ class LiveFeed:
         if cached.payload is not None and time.time() - cached.fetched < GTFS_RT_TTL:
             return cached.payload
 
+        # Stop before Trafiklab does. A card left open on a wall tablet spends
+        # the 30-day quota in a couple of days; going stale is a better failure
+        # than a wall of 429s and a key nobody can use until the window rolls.
+        if request_quota(self.hass).realtime() >= QUOTA_REALTIME:
+            if cached.payload is not None:
+                return cached.payload
+            raise LiveFeedError(
+                "Trafiklab's 30-day realtime quota is spent. Lower the card's "
+                "refresh interval, or request a free quota upgrade."
+            )
+
         session = async_get_clientsession(self.hass)
         headers = {"Accept-Encoding": "gzip, deflate"}
         if cached.etag:
@@ -91,7 +102,7 @@ class LiveFeed:
                     # still a request against the quota.
                     count_request(self.hass, f"rt_{feed}")
                     if response.status == 304 and cached.payload is not None:
-                        count_request(self.hass, "rt_not_modified")
+                        count_request(self.hass, NOT_MODIFIED)
                         cached.fetched = time.time()
                         return cached.payload
                     if response.status == 429:

@@ -11,12 +11,16 @@ from zoneinfo import ZoneInfo
 from google.transit import gtfs_realtime_pb2
 import pytest
 
+from custom_components.ul_transport.const import GTFS_RT_TTL
 from custom_components.ul_transport.gtfs import (
     GTFSIndex,
     build_index,
     ul_stop_to_gtfs_area,
 )
 from custom_components.ul_transport.live import (
+    LiveFeed,
+    LiveFeedError,
+    _Cached,
     _canonical_names,
     _coordinator_directions,
     _predictions,
@@ -26,6 +30,7 @@ from custom_components.ul_transport.live import (
     overview,
     ul_directions,
 )
+from custom_components.ul_transport.quota import QUOTA_REALTIME, request_quota
 
 # A tiny synthetic feed: one stop with two platforms, two lines, three trips.
 MY_UL_ID = 3700600
@@ -1138,3 +1143,25 @@ class TestIndexCoverage:
         # has no trips and the map is empty for it.
         assert index.covers([MY_UL_ID])
         assert not index.covers([MY_UL_ID, 3700141])
+
+
+class TestQuotaStop:
+    """The integration stops one request before Trafiklab's own limit does."""
+
+    async def test_spent_quota_serves_the_cache_rather_than_refetching(self, hass):
+        feed = LiveFeed(hass, "key")
+        cached = feed._cache.setdefault("VehiclePositions", _Cached())
+        cached.payload = _updates({})
+        # Old enough that the TTL would otherwise let a refetch through.
+        cached.fetched = time.time() - GTFS_RT_TTL - 1
+        request_quota(hass)._days["today"] = {"rt_VehiclePositions": QUOTA_REALTIME}
+
+        # No aioclient mock is registered, so a real fetch would fail the test.
+        assert await feed.async_positions() is cached.payload
+
+    async def test_spent_quota_with_nothing_cached_says_so(self, hass):
+        feed = LiveFeed(hass, "key")
+        request_quota(hass)._days["today"] = {"rt_TripUpdates": QUOTA_REALTIME}
+
+        with pytest.raises(LiveFeedError, match="quota"):
+            await feed.async_trip_updates()

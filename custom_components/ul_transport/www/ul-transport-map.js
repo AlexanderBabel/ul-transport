@@ -54,10 +54,11 @@ function loadLeaflet() {
  * clock time, in the user's own Home Assistant language.
  */
 function minutesLabel(vehicle, opts = {}) {
-  if (vehicle.eta_minutes === undefined || vehicle.eta_minutes === null) return "–";
+  const minutes = etaMinutes(vehicle);
+  if (minutes === undefined || minutes === null) return "–";
   // The line view keeps buses that have already called at your stop.
   if (vehicle.passed || vehicle.departed) return "departed";
-  if (opts.after !== undefined && vehicle.eta_minutes >= opts.after) {
+  if (opts.after !== undefined && minutes >= opts.after) {
     return new Date(vehicle.eta * 1000).toLocaleTimeString(opts.locale || undefined, {
       hour: "2-digit",
       minute: "2-digit",
@@ -66,8 +67,21 @@ function minutesLabel(vehicle, opts = {}) {
       ...(opts.hour12 === undefined ? {} : { hour12: opts.hour12 }),
     });
   }
-  if (vehicle.eta_minutes < 0.5) return "now";
-  return `${Math.round(vehicle.eta_minutes)} min`;
+  if (minutes < 0.5) return "now";
+  return `${Math.round(minutes)} min`;
+}
+
+/**
+ * Minutes out, counted off the browser's own clock.
+ *
+ * The server works this out once per request, so on a list refreshing every
+ * minute the countdown would sit still between polls and then jump. The
+ * absolute time it counts to does not move, so counting to it locally is both
+ * cheaper and more honest than asking again.
+ */
+function etaMinutes(vehicle) {
+  if (vehicle.eta) return (vehicle.eta * 1000 - Date.now()) / 60000;
+  return vehicle.eta_minutes;
 }
 
 function delayLabel(vehicle) {
@@ -139,6 +153,10 @@ function nextStopLabel(vehicle, generated) {
 const MAX_EXTRAPOLATION = 25;
 const METRES_PER_DEGREE = 111320;
 const TICK_MS = 250;
+// Ticks between list redraws. A countdown in whole minutes has nothing to say
+// four times a second, and redrawing the rows drops whatever was under the
+// pointer - once every five seconds is under the resolution either can see.
+const LIST_TICKS = 20;
 // A wrong guess is corrected by gliding, not by teleporting - except when the
 // correction is so large that gliding would drag the marker across the map.
 const EASE = 0.22;
@@ -231,8 +249,16 @@ class ULTransportMap extends HTMLElement {
       content: "both",
       layout: "auto",
       // A list has no positions to animate, so it does not need five-second
-      // freshness - and every refresh it skips is a request saved.
-      refresh: config.content === "list" ? 20 : 5,
+      // freshness - and every refresh it skips is a request saved. Trafiklab
+      // allows 30 000 realtime requests per 30 days, which is ~1 000 a day: a
+      // list left up on a wall tablet fits inside that at one request every 90
+      // seconds and nowhere near it at one every 20.
+      refresh: config.content === "list" ? 90 : 5,
+      // Positions are the second of the two feeds. The map cannot work without
+      // them; a list only uses them to mark a timetabled departure as actually
+      // out on the road, which is not worth doubling its share of the quota.
+      // `include_positions: true` in YAML buys that marker back.
+      include_positions: config.content !== "list",
       radius: 800,
       list_count: 8,
       linger: 45,
@@ -303,11 +329,16 @@ class ULTransportMap extends HTMLElement {
     // burn the Trafiklab quota just by opening the dialog.
     const seconds = this.preview ? 60 : this._config.refresh;
     this._timer = setInterval(() => this._load(), seconds * 1000);
-    // Moves the buses between refreshes and ages the "x ago" in the header.
-    // Local work only - it never touches the network.
+    // Moves the buses between refreshes, ages the "x ago" in the header and
+    // walks the countdowns down. Local work only - it never touches the
+    // network, which is the whole point of refreshing a list slowly.
+    let ticks = 0;
     this._tick = setInterval(() => {
       this._buses.forEach((bus) => this._place(bus));
-      if (this._data) this._renderAge();
+      if (!this._data) return;
+      this._renderAge();
+      const list = this.shadowRoot.querySelector(".arrivals");
+      if (list && ++ticks % LIST_TICKS === 0) this._renderList(list);
     }, TICK_MS);
     this._load();
   }
@@ -351,13 +382,7 @@ class ULTransportMap extends HTMLElement {
       : {
           type: "ul_transport/map/overview",
           stop_id: this._config.stop_id,
-          // Positions cost a second upstream request and a list has nothing to
-          // plot with them - but they are also the only thing that can say a
-          // timetabled departure is actually out on the road, so they are worth
-          // it. `include_positions: false` in YAML buys the request back.
-          ...(this._config.include_positions === false
-            ? { include_positions: false }
-            : {}),
+          include_positions: this._config.include_positions !== false,
           // A whole-day list at a hub is thousands of departures; only the
           // rows that will be drawn are worth sending.
           limit: Math.min(this._config.list_count, 200),
@@ -948,7 +973,8 @@ const HELPERS = {
   absolute_after:
     "Departures further out than this show a clock time instead of a countdown. Zero shows clock times for everything.",
   radius: "How far around the stop is framed when the map opens.",
-  refresh: "Only polls while the card is on screen. A list costs one request per refresh, a map two.",
+  refresh:
+    "Only polls while the card is on screen. A list costs one request per refresh, a map two. Trafiklab allows about 1 000 a day.",
   horizon_minutes: "Arrivals later than this are still listed, just not plotted.",
   list_minutes: "Beyond what the live feed knows, the list continues from the timetable - up to a whole day.",
   list_count: "Also caps how much the server sends, so a whole-day list stays cheap.",
@@ -1137,7 +1163,7 @@ class ULTransportMapEditor extends HTMLElement {
         schema: [
           {
             name: "refresh",
-            selector: { number: { min: 3, max: 120, mode: "slider", unit_of_measurement: "s" } },
+            selector: { number: { min: 3, max: 300, mode: "slider", unit_of_measurement: "s" } },
           },
           {
             name: "horizon_minutes",
@@ -1227,7 +1253,8 @@ class ULTransportMapEditor extends HTMLElement {
       content: "both",
       layout: "auto",
       radius: 800,
-      refresh: 5,
+      // Same rule the card uses, so the slider starts where the card actually is.
+      refresh: this._config.content === "list" ? 90 : 5,
       list_count: 8,
       linger: 45,
       show_header: true,

@@ -34,8 +34,8 @@ from .const import (
     GTFS_STATIC_MAX_AGE,
     GTFS_STATIC_TIMEOUT,
     GTFS_STATIC_URL,
-    count_request,
 )
+from .quota import count_request
 
 _LOGGER = logging.getLogger(__name__)
 
