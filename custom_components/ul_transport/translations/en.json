@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "UL Transport",
-        "description": "**Live map** draws the buses actually heading to your stops - where they are, when they arrive and how many stops away they are. It needs two free [Trafiklab](https://www.trafiklab.se/) API keys, because UL's own departure API publishes only times, not vehicle positions or route geometry.\n\nSet the keys up once and every stop you add can use them. You can skip this and add it later - departure sensors work without it.",
+        "description": "**Live map** draws the buses actually heading to your stops - where they are, when they arrive and how many stops away they are. It needs two free [Trafiklab]({trafiklab_url}) API keys, because UL's own departure API publishes only times, not vehicle positions or route geometry.\n\nSet the keys up once and every stop you add can use them. You can skip this and add it later - departure sensors work without it.",
         "menu_options": {
           "trafiklab": "Set up the live map (Trafiklab API keys)",
           "stop": "Skip - just add a stop"
@@ -11,7 +11,7 @@
       },
       "trafiklab": {
         "title": "Trafiklab API keys",
-        "description": "Create a project at [trafiklab.se](https://www.trafiklab.se/) and add **two** datasets to it, then paste a key for each below.\n\nBoth are on the free Regional tier. They belong to your account rather than to any one stop, so you enter them here once and never again.",
+        "description": "Create a project at [trafiklab.se]({trafiklab_url}) and add **two** datasets to it, then paste a key for each below.\n\nBoth are on the free Regional tier. They belong to your account rather than to any one stop, so you enter them here once and never again.",
         "data": {
           "gtfs_static_key": "GTFS Regional key",
           "gtfs_realtime_key": "GTFS Regional Realtime key"

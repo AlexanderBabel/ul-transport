@@ -91,3 +91,15 @@ def test_the_menu_labels_every_option_it_offers():
     )
     labelled = set(STRINGS["config"]["step"]["user"]["menu_options"])
     assert offered == labelled
+
+
+@pytest.mark.parametrize(
+    "path", [COMPONENT / "strings.json", *TRANSLATIONS], ids=lambda p: p.stem
+)
+def test_no_urls_are_baked_into_the_strings(path):
+    """Hassfest rejects them: a link belongs in a description placeholder.
+
+    Otherwise every translation has to be re-edited when the link moves, and
+    CI catches it only after the release is tagged.
+    """
+    assert not re.findall(r"https?://", path.read_text())

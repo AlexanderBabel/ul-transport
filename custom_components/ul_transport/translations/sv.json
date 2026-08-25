@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "UL Transport",
-        "description": "**Livekartan** visar bussarna som faktiskt är på väg till dina hållplatser - var de är, när de kommer fram och hur många hållplatser bort de är. Den kräver två kostnadsfria API-nycklar från [Trafiklab](https://www.trafiklab.se/), eftersom UL:s eget avgångs-API bara publicerar tider - inte fordonspositioner eller linjesträckningar.\n\nAnge nycklarna en gång så kan alla hållplatser du lägger till använda dem. Du kan hoppa över detta och lägga till det senare - avgångssensorerna fungerar ändå.",
+        "description": "**Livekartan** visar bussarna som faktiskt är på väg till dina hållplatser - var de är, när de kommer fram och hur många hållplatser bort de är. Den kräver två kostnadsfria API-nycklar från [Trafiklab]({trafiklab_url}), eftersom UL:s eget avgångs-API bara publicerar tider - inte fordonspositioner eller linjesträckningar.\n\nAnge nycklarna en gång så kan alla hållplatser du lägger till använda dem. Du kan hoppa över detta och lägga till det senare - avgångssensorerna fungerar ändå.",
         "menu_options": {
           "trafiklab": "Konfigurera livekartan (API-nycklar från Trafiklab)",
           "stop": "Hoppa över - lägg bara till en hållplats"
@@ -11,7 +11,7 @@
       },
       "trafiklab": {
         "title": "API-nycklar från Trafiklab",
-        "description": "Skapa ett projekt på [trafiklab.se](https://www.trafiklab.se/) och lägg till **två** datamängder i det, klistra sedan in en nyckel för vardera nedan.\n\nBåda ingår i den kostnadsfria nivån Regional. De hör till ditt konto och inte till någon enskild hållplats, så du anger dem här en gång och aldrig mer.",
+        "description": "Skapa ett projekt på [trafiklab.se]({trafiklab_url}) och lägg till **två** datamängder i det, klistra sedan in en nyckel för vardera nedan.\n\nBåda ingår i den kostnadsfria nivån Regional. De hör till ditt konto och inte till någon enskild hållplats, så du anger dem här en gång och aldrig mer.",
         "data": {
           "gtfs_static_key": "Nyckel för GTFS Regional",
           "gtfs_realtime_key": "Nyckel för GTFS Regional Realtime"

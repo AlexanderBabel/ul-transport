@@ -19,6 +19,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 
@@ -50,6 +51,10 @@ from .llm_tool import (
 from .quota import async_setup_quota
 
 _LOGGER = logging.getLogger(__name__)
+
+# There is no YAML configuration; async_setup exists only to move pre-2.3 keys
+# off the stop that was holding them.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 STOP_PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BUTTON]
 # The quota sensors watch the Trafiklab key, so they belong to its entry.

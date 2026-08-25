@@ -49,6 +49,11 @@ from .quota import count_request
 
 _LOGGER = logging.getLogger(__name__)
 
+# hassfest refuses URLs inside translated strings, so the one link the setup
+# text needs is passed in rather than written into every translation.
+TRAFIKLAB_URL = "https://www.trafiklab.se/"
+PLACEHOLDERS = {"trafiklab_url": TRAFIKLAB_URL}
+
 
 async def _async_get_json(hass: HomeAssistant, url: str, **kwargs: Any) -> Any:
     """One UL API call. Anything that is not a usable body is CannotConnect."""
@@ -190,7 +195,11 @@ class ULTransportConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """
         if trafiklab_entry(self.hass) is not None:
             return await self.async_step_stop()
-        return self.async_show_menu(step_id="user", menu_options=["trafiklab", "stop"])
+        return self.async_show_menu(
+            step_id="user",
+            menu_options=["trafiklab", "stop"],
+            description_placeholders=PLACEHOLDERS,
+        )
 
     async def async_step_trafiklab(
         self, user_input: dict[str, Any] | None = None
@@ -230,6 +239,7 @@ class ULTransportConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 (user_input or {}).get(CONF_GTFS_REALTIME_KEY, ""),
             ),
             errors=errors,
+            description_placeholders=PLACEHOLDERS,
         )
 
     async def async_step_import(self, import_data: dict[str, Any]) -> ConfigFlowResult:

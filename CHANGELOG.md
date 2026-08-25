@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.3.1 - 2026-08-25
+
+Fixes the setup text shipped in 2.3.0. The strings were valid and rendered
+correctly, but embedded a link directly rather than as a placeholder, which
+Home Assistant's own `hassfest` rejects.
+
+### Fixed
+
+- The Trafiklab link in the setup steps is passed as a description placeholder,
+  so `hassfest` validates again and the link lives in one place rather than in
+  every translation.
+- `CONFIG_SCHEMA` declares the integration config-entry-only. 2.3.0 added an
+  `async_setup` for the key migration without it, which `hassfest` warns about.
+
 ## 2.3.0 - 2026-08-25
 
 The Trafiklab keys move into a config entry of their own. Before this they
