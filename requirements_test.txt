@@ -8,4 +8,4 @@ gtfs-realtime-bindings>=2.2.0
 pytest-cov>=7.1.0
 # Exact, and read by the Ruff CI job via version-file, so a lint run here and
 # a lint run in CI are the same lint run. Dependabot moves it.
-ruff==0.16.3
+ruff==0.16.5
